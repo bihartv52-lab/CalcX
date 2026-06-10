@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CalcX - Chat</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700&amp;family=Geist:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-fixed-dim": "#00dbe9",
+                        "on-secondary-fixed-variant": "#74009f",
+                        "on-primary-container": "#006970",
+                        "surface-container-low": "#1c1b1b",
+                        "inverse-primary": "#006970",
+                        "background": "#131313",
+                        "error-container": "#93000a",
+                        "surface-container-highest": "#353534",
+                        "surface-bright": "#3a3939",
+                        "secondary": "#ebb2ff",
+                        "on-error-container": "#ffdad6",
+                        "on-primary-fixed": "#002022",
+                        "error": "#ffb4ab",
+                        "on-background": "#e5e2e1",
+                        "secondary-fixed": "#f8d8ff",
+                        "secondary-fixed-dim": "#ebb2ff",
+                        "on-primary": "#00363a",
+                        "tertiary-fixed-dim": "#d1bcff",
+                        "on-surface-variant": "#b9cacb",
+                        "surface-container": "#201f1f",
+                        "on-primary-fixed-variant": "#004f54",
+                        "surface-container-high": "#2a2a2a",
+                        "inverse-on-surface": "#313030",
+                        "secondary-container": "#b600f8",
+                        "on-error": "#690005",
+                        "on-secondary-fixed": "#320047",
+                        "outline-variant": "#3b494b",
+                        "on-tertiary-fixed": "#23005b",
+                        "tertiary-fixed": "#e9ddff",
+                        "surface-variant": "#353534",
+                        "on-secondary-container": "#fff6fc",
+                        "on-tertiary-container": "#7213ff",
+                        "on-tertiary": "#3c0090",
+                        "tertiary-container": "#e1d2ff",
+                        "surface": "#131313",
+                        "surface-tint": "#00dbe9",
+                        "inverse-surface": "#e5e2e1",
+                        "outline": "#849495",
+                        "tertiary": "#faf3ff",
+                        "primary": "#dbfcff",
+                        "primary-container": "#00f0ff",
+                        "on-tertiary-fixed-variant": "#5700c9",
+                        "primary-fixed": "#7df4ff",
+                        "surface-dim": "#131313",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary": "#520072",
+                        "on-surface": "#e5e2e1"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-md": "16px",
+                        "stack-lg": "32px",
+                        "stack-xl": "64px",
+                        "container-margin": "24px",
+                        "stack-sm": "8px",
+                        "gutter": "16px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Sora"],
+                        "label-sm": ["Geist"],
+                        "headline-sm": ["Sora"],
+                        "headline-lg": ["Sora"],
+                        "body-md": ["Geist"],
+                        "label-md": ["Geist"],
+                        "body-lg": ["Geist"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["28px", { "lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "600" }],
+                        "headline-sm": ["20px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "headline-lg": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glass-card {
+            background-color: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            border-left: 1px solid rgba(255, 255, 255, 0.15);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .neon-glow {
+            box-shadow: 0 0 15px rgba(0, 219, 233, 0.3);
+        }
+        .neon-text-glow {
+            text-shadow: 0 0 8px rgba(0, 219, 233, 0.8);
+        }
+        .bg-gradient-message {
+            background: linear-gradient(135deg, rgba(116, 0, 159, 0.2) 0%, rgba(0, 219, 233, 0.1) 100%);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col font-body-md overflow-x-hidden selection:bg-primary-fixed-dim selection:text-on-primary-fixed">
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky z-40 bg-background/40 backdrop-blur-3xl border-b border-white/10 shadow-[0_0_20px_rgba(0,219,233,0.1)] flex justify-between items-center px-container-margin py-4 transition-all">
+<div class="flex items-center gap-stack-md">
+<div class="relative">
+<img alt="User Profile Avatar" class="w-10 h-10 rounded-full object-cover border border-white/20" data-alt="A cinematic portrait of a young woman with a cyberpunk aesthetic. She is illuminated by dramatic neon blue and purple rim lighting against a pitch-black background. Her expression is focused and intense. The overall mood is mysterious, high-tech, and premium dark." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsiabvMP9bAH1_pb6q8peXCiTdPhMcOhfOmCzX1d6YNfrcsX4YcBhZpf2xSot77Ly4Lg2ttbkv737sDdh2QeGk30IaXhXQUlu4hStTf1I1b09WtlQJxAV3m4ot00EAzTq_qgNMwYNprqjck36eOhUHQV0gutjCQTLod2Ae5OsDoUV7Tps-AESmaewzZESE799hIJijihd7t6eez-kDcJmzGKrWVFk1jsIEYTKD_IN4-8-jZUs8cnev4JjyRdf3Kq2iTf3VhjNHtA"/>
+<div class="absolute bottom-0 right-0 w-3 h-3 bg-primary-fixed-dim rounded-full neon-glow border-2 border-background"></div>
+</div>
+<h1 class="font-headline-md text-headline-md text-primary-fixed-dim tracking-tighter">CalcX</h1>
+</div>
+<div class="flex items-center gap-stack-md text-on-surface-variant">
+<button class="hover:opacity-80 transition-opacity active:scale-95 duration-150 flex items-center justify-center p-2 rounded-full hover:bg-white/5">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">call</span>
+</button>
+<button class="hover:opacity-80 transition-opacity active:scale-95 duration-150 flex items-center justify-center p-2 rounded-full hover:bg-white/5">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">videocam</span>
+</button>
+<button class="hover:opacity-80 transition-opacity active:scale-95 duration-150 flex items-center justify-center p-2 rounded-full hover:bg-white/5 text-primary-fixed-dim">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">search</span>
+</button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 px-container-margin py-stack-lg pb-32 flex flex-col gap-stack-md">
+<!-- Search/Filter Input -->
+<div class="relative w-full mb-stack-md group">
+<div class="absolute inset-y-0 left-4 flex items-center pointer-events-none text-on-surface-variant group-focus-within:text-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined text-label-md">search</span>
+</div>
+<input class="w-full bg-surface-container-low/50 backdrop-blur-md border border-white/10 rounded-full py-3 pl-12 pr-4 font-body-md text-on-surface placeholder:text-on-surface-variant focus:outline-none focus:border-primary-fixed-dim focus:ring-1 focus:ring-primary-fixed-dim/50 transition-all shadow-inner" placeholder="Search variables..." type="text"/>
+</div>
+<!-- Chat List -->
+<div class="flex flex-col gap-stack-sm">
+<!-- Chat Item 1 (Active/Unread) -->
+<div class="glass-card rounded-xl p-4 flex items-center gap-stack-md relative overflow-hidden group cursor-pointer hover:bg-white/5 transition-colors">
+<div class="relative flex-shrink-0">
+<img alt="Cipher" class="w-14 h-14 rounded-full object-cover border border-white/20" data-alt="A highly stylized cyberpunk portrait of a man in shadows. Only a sliver of his face is illuminated by a harsh neon blue light strip. He wears dark, utilitarian clothing. The background is an out-of-focus cityscape at night with glowing signs. The aesthetic is gritty yet premium." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQSLCVeUOI3bTAuh6FulpUicCfQy3s4vi3evHkINyoY4zRPXTFU3Z7qF69ydKF8DmMmdKcaUYDwobRpvkV-PDATfHlMoKlYzQB_pcgJTlkDDMSs-M9oqdwWK9j3b9fUxeqCcNNu2EuUSttJjQtgRHxwacVy0manFc-4uBNe9LlufL4pf7CV1OveDliMnCI3YVzUiedb7IbXDef-4ztpctwP_z4xE44S2B1LoeOmp0fo8gls8o76fTYyF0gjPA8ebpU6Y19mK9uDQ"/>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-primary-fixed-dim rounded-full neon-glow border-2 border-surface"></div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-baseline mb-1">
+<h2 class="font-headline-sm text-headline-sm text-on-surface truncate">Cipher</h2>
+<span class="font-label-sm text-label-sm text-primary-fixed-dim">12:45</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface truncate pr-8">ƒ(x) = 2x + y^2</p>
+</div>
+<div class="absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full bg-primary-fixed-dim/20 border border-primary-fixed-dim/50 neon-glow">
+<span class="font-label-sm text-label-sm text-primary-fixed-dim font-bold">3</span>
+</div>
+</div>
+<!-- Chat Item 2 -->
+<div class="glass-card rounded-xl p-4 flex items-center gap-stack-md relative overflow-hidden group cursor-pointer hover:bg-white/5 transition-colors opacity-80">
+<div class="relative flex-shrink-0">
+<img alt="Nova" class="w-14 h-14 rounded-full object-cover border border-white/10 grayscale-[50%]" data-alt="A portrait of a woman looking away, bathed in soft, deep purple and pink neon lighting. The environment is dark and moody, suggesting an underground tech club. Her silhouette is sharp against the colorful glows. Cinematic cyberpunk style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhROWfk_anohWqCJ7Pp7iuAKUDb01vvwZDs5Fb6qR3FaGaYyqbfRJdeP9_IxSf5LUP_LE0tcBxmZZ5BPVQPoigrDsFXjld8TnXcHGd8L0j02LMMbhpkGb74k__FFQLMSn8IOYyihyGOawe25VlVqVwBDcBRyB6h-TvXF8j1kTFYvYknD0Z9oIvxVfQkSIOrcKIGrtke_9qvskHIMnLuPQ6HDhNGlPK7yTMCoiyGL_arcChYpUADBVgcFybRF7viHJuETPV_Mt_cQ"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-baseline mb-1">
+<h2 class="font-label-md text-label-md text-on-surface truncate">Nova</h2>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Yesterday</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant truncate">Integral calculated successfully.</p>
+</div>
+</div>
+<!-- Chat Item 3 -->
+<div class="glass-card rounded-xl p-4 flex items-center gap-stack-md relative overflow-hidden group cursor-pointer hover:bg-white/5 transition-colors opacity-80">
+<div class="relative flex-shrink-0">
+<div class="w-14 h-14 rounded-full bg-surface-container-highest border border-white/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant text-2xl">group</span>
+</div>
+<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-secondary-fixed-dim rounded-full shadow-[0_0_10px_rgba(235,178,255,0.3)] border-2 border-surface"></div>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-baseline mb-1">
+<h2 class="font-label-md text-label-md text-on-surface truncate">Project Matrix</h2>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Mon</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant truncate">Delta: x = 42</p>
+</div>
+</div>
+<!-- Chat Item 4 -->
+<div class="glass-card rounded-xl p-4 flex items-center gap-stack-md relative overflow-hidden group cursor-pointer hover:bg-white/5 transition-colors opacity-60">
+<div class="relative flex-shrink-0">
+<img alt="Zero" class="w-14 h-14 rounded-full object-cover border border-white/10 grayscale-[80%]" data-alt="A close-up shot of a person wearing futuristic, reflective augmented reality glasses. Neon blue and magenta lights reflect off the lenses. The background is completely black. High-contrast, premium tech aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAQzpE6X4ma0S8va7hIBizW6MQKP5km_4gPVoL7KlzqNJm1zr1BKJoBhFm3XpEva4OKZdFIxt0lb9kY2O77GZE1B7uq3lbbTu6FapzY1chUHt51IBYCAPEGzZGwsv05Z1kyjp7Gjeix_KHmc27POu78tDAW2tMSSCgXRa5tx2h4iZO6MKNSMJM-keGDrRCIwPFJIntaOMGccm9ij7N8OJVHjvqy6WwsuNu1xbooDdWv0uJcFEiWHr15tpljnYCwXSQqXhKvTFK5BQ"/>
+</div>
+<div class="flex-1 min-w-0">
+<div class="flex justify-between items-baseline mb-1">
+<h2 class="font-label-md text-label-md text-on-surface truncate">Zero</h2>
+<span class="font-label-sm text-label-sm text-on-surface-variant">Oct 12</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant truncate italic">Null set returned.</p>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 w-full z-50 rounded-t-xl bg-surface-container-lowest/30 backdrop-blur-2xl border-t border-white/10 shadow-[0_-8px_32px_rgba(0,0,0,0.4)] flex justify-around items-center h-20 px-6 pb-safe md:hidden">
+<button class="flex items-center justify-center text-primary-fixed-dim drop-shadow-[0_0_8px_rgba(0,219,233,0.8)] scale-110 translate-y-[-2px] duration-300">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">chat</span>
+</button>
+<button class="flex items-center justify-center text-on-surface-variant opacity-50 hover:text-primary transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">group</span>
+</button>
+<button class="flex items-center justify-center text-on-surface-variant opacity-50 hover:text-primary transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">music_note</span>
+</button>
+<button class="flex items-center justify-center text-on-surface-variant opacity-50 hover:text-primary transition-all">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+</button>
+</nav>
+<!-- Desktop SideNav Placeholder (Hidden on Mobile) -->
+<nav class="hidden md:flex fixed left-0 top-0 h-full w-20 bg-surface-container-lowest/30 backdrop-blur-2xl border-r border-white/10 flex-col items-center py-stack-lg gap-stack-lg z-50 shadow-[8px_0_32px_rgba(0,0,0,0.4)]">
+<div class="font-headline-sm text-headline-sm text-primary-fixed-dim">CX</div>
+<div class="flex flex-col gap-stack-md mt-stack-md w-full">
+<button class="w-full flex justify-center py-4 text-primary-fixed-dim relative">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">chat</span>
+<div class="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary-fixed-dim rounded-r-full neon-glow"></div>
+</button>
+<button class="w-full flex justify-center py-4 text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">group</span>
+</button>
+<button class="w-full flex justify-center py-4 text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">music_note</span>
+</button>
+</div>
+<div class="mt-auto w-full">
+<button class="w-full flex justify-center py-4 text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">settings</span>
+</button>
+</div>
+</nav>
+</body></html>

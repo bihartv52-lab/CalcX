@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "534955793586",
+    "project_id": "calcx-e4acf",
+    "storage_bucket": "calcx-e4acf.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:534955793586:android:a0482e461aa9926446fdab",
+        "android_client_info": {
+          "package_name": "com.adarsh.calcx"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCf3TMN_eosEhdx-5T6Va8-D_iucjMAx78"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
