@@ -43,15 +43,15 @@ class _LudoGameWidgetState extends ConsumerState<LudoGameWidget> with SingleTick
   ];
 
   // Star safe spots on board (coordinates)
-  static const Set<Point<int>> safeSpots = {
-    Point(6, 1), // Red start
-    Point(8, 2),
-    Point(2, 6),
-    Point(1, 8), // Green start
-    Point(6, 12),
-    Point(8, 13), // Yellow start
-    Point(12, 8),
-    Point(13, 6), // Blue start
+  static final Set<Point<int>> safeSpots = {
+    const Point(6, 1), // Red start
+    const Point(8, 2),
+    const Point(2, 6),
+    const Point(1, 8), // Green start
+    const Point(6, 12),
+    const Point(8, 13), // Yellow start
+    const Point(12, 8),
+    const Point(13, 6), // Blue start
   };
 
   // Home stretch coordinate paths for each color

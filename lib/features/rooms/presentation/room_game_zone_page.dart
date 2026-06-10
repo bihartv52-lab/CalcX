@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/features/rooms/presentation/widgets/room_chat_sidebar.dart';
 import 'package:calcx/core/widgets/glass_card.dart';
@@ -46,6 +47,27 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
   List<Offset> _currentPoints = [];
   bool _isEraserSelected = false;
 
+  Timer? _drawMasterTimer;
+
+  static const List<String> _drawWords = [
+    'CAT', 'DOG', 'LION', 'ELEPHANT', 'MONKEY', 'GIRAFFE', 'PIRATE', 'CASTLE',
+    'ROBOT', 'DRAGON', 'SNOWMAN', 'ICECREAM', 'SPIDER', 'BUTTERFLY', 'HOUSE',
+    'TREE', 'CAR', 'AIRPLANE', 'ROCKET', 'GUITAR', 'PIZZA', 'APPLE', 'BANANA',
+    'SUNGLASSES', 'HAMBURGER', 'RAINBOW', 'CLOCK', 'OCTOPUS', 'HELICOPTER',
+    'TELEPHONE', 'COMPUTER', 'CAMERA', 'CUPCAKE', 'FISH', 'PENGUIN', 'TURTLE'
+  ];
+
+  Map<String, dynamic> get _drawGameState => _activeSession?['game_state'] as Map<String, dynamic>? ?? {};
+  List<dynamic> get _drawPlayers => _drawGameState['players'] as List<dynamic>? ?? [];
+  String get _drawCanvasMode => _drawGameState['canvas_mode'] as String? ?? 'one_board';
+  String get _drawGameStatus => _drawGameState['game_status'] as String? ?? 'playing';
+  String get _drawTargetWord => _drawGameState['target_word'] as String? ?? '';
+  int get _drawTimerSeconds => _drawGameState['timer_seconds'] as int? ?? 60;
+  String get _drawCurrentTurn => _drawGameState['current_turn'] as String? ?? '';
+  Map<String, dynamic> get _drawDrawings => _drawGameState['drawings'] as Map<String, dynamic>? ?? {};
+  int get _drawCurrentRatingIndex => _drawGameState['current_rating_index'] as int? ?? 0;
+  Map<String, dynamic> get _drawRatings => _drawGameState['ratings'] as Map<String, dynamic>? ?? {};
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +77,7 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
   @override
   void dispose() {
     _sessionSubscription?.cancel();
+    _drawMasterTimer?.cancel();
     _lobbyUrlController.dispose();
     super.dispose();
   }
@@ -80,6 +103,8 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
             _xoPlayerX = '';
             _xoPlayerO = '';
           });
+          _drawMasterTimer?.cancel();
+          _drawMasterTimer = null;
         }
         return;
       }
@@ -107,12 +132,50 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
               _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(lobbyUrl)));
             }
           } else if (gameType == 'draw') {
-            final strokesRaw = state['strokes'] as List<dynamic>? ?? [];
-            _drawingStrokes = strokesRaw
-                .map((s) => _DrawingStroke.fromMap(s as Map<String, dynamic>))
-                .toList();
+            final mode = state['canvas_mode'] as String? ?? 'one_board';
+            final status = state['game_status'] as String? ?? 'playing';
+            
+            if (mode == 'competition') {
+              if (status == 'rating') {
+                final players = state['players'] as List? ?? [];
+                final ratingIdx = state['current_rating_index'] as int? ?? 0;
+                final ratedPlayerId = ratingIdx < players.length ? players[ratingIdx] as String? : null;
+                if (ratedPlayerId != null) {
+                  final drawingsMap = state['drawings'] as Map? ?? {};
+                  final strokesRaw = drawingsMap[ratedPlayerId] as List? ?? [];
+                  _drawingStrokes = strokesRaw
+                      .map((s) => _DrawingStroke.fromMap(s as Map<String, dynamic>))
+                      .toList();
+                } else {
+                  _drawingStrokes = [];
+                }
+              } else if (status == 'drawing') {
+                if (_currentPoints.isEmpty) {
+                  final myId = client.auth.currentUser?.id;
+                  final drawingsMap = state['drawings'] as Map? ?? {};
+                  final strokesRaw = drawingsMap[myId] as List? ?? [];
+                  _drawingStrokes = strokesRaw
+                      .map((s) => _DrawingStroke.fromMap(s as Map<String, dynamic>))
+                      .toList();
+                }
+              } else {
+                _drawingStrokes = [];
+              }
+            } else {
+              final strokesRaw = state['strokes'] as List<dynamic>? ?? [];
+              _drawingStrokes = strokesRaw
+                  .map((s) => _DrawingStroke.fromMap(s as Map<String, dynamic>))
+                  .toList();
+            }
           }
         });
+
+        if (gameType == 'draw') {
+          _startDrawMasterTimerIfNeeded();
+        } else {
+          _drawMasterTimer?.cancel();
+          _drawMasterTimer = null;
+        }
       }
     });
   }
@@ -164,6 +227,227 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
         }
       ),
     );
+  }
+
+  Future<String?> _showDrawModeDialog() async {
+    String selectedMode = 'one_board';
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            title: const Text('Select Drawing Mode', style: TextStyle(color: Colors.white)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  title: const Text('One Board Mode', style: TextStyle(color: Colors.white)),
+                  subtitle: const Text('Everyone draws simultaneously on a shared canvas.', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                  value: 'one_board',
+                  groupValue: selectedMode,
+                  onChanged: (val) => setState(() => selectedMode = val!),
+                ),
+                RadioListTile<String>(
+                  title: const Text('Competition Mode', style: TextStyle(color: Colors.white)),
+                  subtitle: const Text('Draw a random thing/animal privately under a timer, then rate each other\'s drawings!', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                  value: 'competition',
+                  groupValue: selectedMode,
+                  onChanged: (val) => setState(() => selectedMode = val!),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(null),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(selectedMode),
+                child: const Text('Confirm', style: TextStyle(color: Colors.blueAccent)),
+              ),
+            ],
+          );
+        }
+      ),
+    );
+  }
+
+  void _startDrawMasterTimerIfNeeded() {
+    final client = SupabaseService.clientOrNull;
+    final myId = client?.auth.currentUser?.id;
+    final hostId = _activeSession?['host_id'] as String? ?? '';
+    final gameType = _activeSession?['game_type'] as String?;
+
+    if (myId == null || myId != hostId || gameType != 'draw' || _drawCanvasMode != 'competition' || _drawGameStatus == 'lobby' || _drawGameStatus == 'ended') {
+      _drawMasterTimer?.cancel();
+      _drawMasterTimer = null;
+      return;
+    }
+
+    if (_drawMasterTimer != null) return;
+
+    _drawMasterTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
+      if (_drawTimerSeconds <= 0) {
+        await _advanceDrawGamePhase();
+      } else {
+        final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+        state['timer_seconds'] = _drawTimerSeconds - 1;
+        await _updateGameState(state);
+      }
+    });
+  }
+
+  Future<void> _advanceDrawGamePhase() async {
+    if (_activeSession == null) return;
+    final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+    final players = List<String>.from(state['players'] as List? ?? []);
+    if (players.isEmpty) return;
+
+    final currentStatus = state['game_status'] as String? ?? 'lobby';
+
+    if (currentStatus == 'drawing') {
+      state['game_status'] = 'rating';
+      state['current_rating_index'] = 0;
+      state['timer_seconds'] = 15;
+      
+      final ratingsMap = <String, Map<String, dynamic>>{};
+      for (final uid in players) {
+        ratingsMap[uid] = <String, dynamic>{};
+      }
+      state['ratings'] = ratingsMap;
+      
+      await _updateGameState(state);
+    } else if (currentStatus == 'rating') {
+      final currentRatingIdx = state['current_rating_index'] as int? ?? 0;
+      if (currentRatingIdx < players.length - 1) {
+        state['current_rating_index'] = currentRatingIdx + 1;
+        state['timer_seconds'] = 15;
+        await _updateGameState(state);
+      } else {
+        // Calculate winner
+        final ratings = state['ratings'] as Map? ?? {};
+        final scoresMap = <String, double>{};
+        
+        for (final uid in players) {
+          final playerRatings = (ratings[uid] as Map?) ?? {};
+          double sum = 0.0;
+          int count = 0;
+          playerRatings.forEach((voterId, val) {
+            sum += (val as num).toDouble();
+            count++;
+          });
+          scoresMap[uid] = count > 0 ? sum / count : 0.0;
+        }
+
+        String? winnerId;
+        double maxScore = -1.0;
+        scoresMap.forEach((uid, score) {
+          if (score > maxScore) {
+            maxScore = score;
+            winnerId = uid;
+          }
+        });
+
+        state['game_status'] = 'ended';
+        state['winner_id'] = winnerId;
+        state['scores'] = scoresMap;
+        
+        await _updateGameState(state);
+
+        // Award reward to winner
+        if (winnerId != null) {
+          final wager = state['wager'] as int? ?? 10;
+          final pot = wager * players.length;
+          final commission = (pot * 0.05).round();
+          final finalPayout = pot - commission;
+          await _rewardWinner(winnerId!, finalPayout);
+        }
+      }
+    }
+  }
+
+  Future<bool> _placeBet(String userId, int amount) async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null) return false;
+    try {
+      return await client.rpc('place_bet', params: {
+        'player_id': userId,
+        'bet_amount': amount,
+      }) as bool? ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _rewardWinner(String winnerId, int amount) async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null || _activeSession == null) return;
+    try {
+      await client.rpc('reward_winner', params: {
+        'player_id': winnerId,
+        'reward_amount': amount,
+        'game_name': 'Drawing Canvas',
+      });
+      await client
+          .from('game_sessions')
+          .update({'status': 'finished', 'winner_id': winnerId})
+          .eq('id', _activeSession!['id']);
+    } catch (_) {}
+  }
+
+  Future<void> _joinDrawLobby() async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null || _activeSession == null) return;
+    final myId = client.auth.currentUser?.id;
+    if (myId == null) return;
+
+    final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+    final players = List<String>.from(state['players'] as List? ?? []);
+
+    if (players.contains(myId)) return;
+    players.add(myId);
+
+    state['players'] = players;
+    await _updateGameState(state);
+  }
+
+  Future<void> _startDrawGame() async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null || _activeSession == null) return;
+
+    final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+    final players = List<String>.from(state['players'] as List? ?? []);
+
+    if (players.isEmpty) return;
+
+    final wager = state['wager'] as int? ?? 10;
+    
+    // Deduct wager from each player
+    for (final uid in players) {
+      final ok = await _placeBet(uid, wager);
+      if (!ok) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('A player does not have enough credits to join!')),
+          );
+        }
+        return;
+      }
+    }
+
+    // Select random word
+    final rand = Random();
+    final targetWord = _drawWords[rand.nextInt(_drawWords.length)];
+
+    state['game_status'] = 'drawing';
+    state['target_word'] = targetWord;
+    state['timer_seconds'] = 60;
+    state['drawings'] = {for (var uid in players) uid: []};
+    state['ratings'] = {for (var uid in players) uid: {}};
+    state['scores'] = {for (var uid in players) uid: 0.0};
+
+    await _updateGameState(state);
   }
 
   Future<void> _startNewGame(String gameType) async {
@@ -223,8 +507,27 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
         'wager': wagerAmount,
       };
     } else if (gameType == 'draw') {
+      final selectedMode = await _showDrawModeDialog();
+      if (selectedMode == null) return; // Host cancelled
+
+      int wagerAmount = 10;
+      if (selectedMode == 'competition') {
+        final selectedWager = await _showWagerDialog();
+        if (selectedWager == null) return; // Host cancelled
+        wagerAmount = selectedWager;
+      }
+
       initialState = {
         'strokes': [],
+        'canvas_mode': selectedMode,
+        'players': [myId],
+        'current_turn': myId,
+        'game_status': selectedMode == 'competition' ? 'lobby' : 'playing',
+        'wager': wagerAmount,
+        'timer_seconds': 60,
+        'drawings': {},
+        'ratings': {},
+        'scores': {},
       };
     }
 
@@ -356,6 +659,9 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
   }
 
   Widget _buildGameArea() {
+    final client = SupabaseService.clientOrNull;
+    final myId = client?.auth.currentUser?.id ?? '';
+
     if (_activeGameType == null) {
       return _buildGameSelectionMenu();
     }
@@ -364,7 +670,35 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
       case 'xo':
         return _buildXOBoard();
       case 'draw':
-        return _buildDrawingBoard();
+        if (_activeSession != null) {
+          if (_drawCanvasMode == 'competition' && _drawGameStatus == 'lobby') {
+            return Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  color: const Color(0xFF131313),
+                  child: Row(
+                    children: [
+                      IconButton.filled(
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        onPressed: _exitGame,
+                        tooltip: 'Exit Game',
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Drawing Canvas 🎨',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(child: _buildDrawLobbyScreen(myId)),
+              ],
+            );
+          }
+          return _buildDrawingBoard();
+        }
+        return const Center(child: CircularProgressIndicator());
       case 'skribbl':
         if (_activeSession != null) {
           return ScribbleGameWidget(
@@ -761,10 +1095,14 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
           ],
         ),
       ),
-    );
-  }
-
   Widget _buildDrawingBoard() {
+    final client = SupabaseService.clientOrNull;
+    final myId = client?.auth.currentUser?.id ?? '';
+
+    if (_drawGameStatus == 'ended') {
+      return _buildDrawEndedScreen(myId);
+    }
+
     final colors = [
       Colors.white,
       Colors.grey,
@@ -786,6 +1124,9 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
     final canvasBg = const Color(0xFF1E1E1E);
     final currentColor = _isEraserSelected ? canvasBg : _selectedColor;
 
+    final isDrawingAllowed = (_drawCanvasMode == 'one_board') || 
+                             (_drawCanvasMode == 'competition' && _drawGameStatus == 'drawing');
+
     return Column(
       children: [
         // Title bar with exit, undo, and clear buttons
@@ -800,48 +1141,104 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
                 onPressed: _exitGame,
                 tooltip: 'Exit Game',
               ),
-              const Text(
-                'Drawing Canvas 🎨',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.white),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Text(
+                    _drawCanvasMode == 'competition'
+                        ? (_drawGameStatus == 'drawing'
+                            ? 'Draw: $_drawTargetWord'
+                            : 'Rating Drawings')
+                        : 'Drawing Canvas 🎨',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton.filled(
-                    icon: const Icon(Icons.undo_rounded),
-                    onPressed: _drawingStrokes.isEmpty ? null : () {
-                      final updatedStrokes = List<_DrawingStroke>.from(_drawingStrokes)..removeLast();
-                      final newState = {
-                        'strokes': updatedStrokes.map((s) => s.toMap()).toList(),
-                      };
-                      setState(() {
-                        _drawingStrokes = updatedStrokes;
-                      });
-                      _updateGameState(newState);
-                    },
-                    tooltip: 'Undo',
-                    style: IconButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      disabledBackgroundColor: Colors.blueAccent.withValues(alpha: 0.3),
+              if (_drawCanvasMode == 'one_board')
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton.filled(
+                      icon: const Icon(Icons.undo_rounded),
+                      onPressed: _drawingStrokes.isEmpty ? null : () {
+                        final updatedStrokes = List<_DrawingStroke>.from(_drawingStrokes)..removeLast();
+                        final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+                        state['strokes'] = updatedStrokes.map((s) => s.toMap()).toList();
+                        setState(() {
+                          _drawingStrokes = updatedStrokes;
+                        });
+                        _updateGameState(state);
+                      },
+                      tooltip: 'Undo',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.blueAccent,
+                        disabledBackgroundColor: Colors.blueAccent.withValues(alpha: 0.3),
+                      ),
                     ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      icon: const Icon(Icons.delete_sweep_rounded),
+                      onPressed: () {
+                        final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+                        state['strokes'] = [];
+                        setState(() {
+                          _drawingStrokes = [];
+                        });
+                        _updateGameState(state);
+                      },
+                      tooltip: 'Clear Canvas',
+                      style: IconButton.styleFrom(backgroundColor: Colors.redAccent),
+                    ),
+                  ],
+                )
+              else if (_drawGameStatus == 'drawing')
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton.filled(
+                      icon: const Icon(Icons.undo_rounded),
+                      onPressed: _drawingStrokes.isEmpty ? null : () {
+                        final updatedStrokes = List<_DrawingStroke>.from(_drawingStrokes)..removeLast();
+                        final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+                        final drawingsMap = Map<String, dynamic>.from(state['drawings'] as Map? ?? {});
+                        drawingsMap[myId] = updatedStrokes.map((s) => s.toMap()).toList();
+                        state['drawings'] = drawingsMap;
+                        setState(() {
+                          _drawingStrokes = updatedStrokes;
+                        });
+                        _updateGameState(state);
+                      },
+                      tooltip: 'Undo Last Stroke',
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.pinkAccent.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.pinkAccent, width: 1),
+                      ),
+                      child: Text(
+                        '⌛ $_drawTimerSeconds s',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.pinkAccent, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                )
+              else if (_drawGameStatus == 'rating')
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amberAccent.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amberAccent, width: 1),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    icon: const Icon(Icons.delete_sweep_rounded),
-                    onPressed: () {
-                      final newState = {
-                        'strokes': [],
-                      };
-                      setState(() {
-                        _drawingStrokes = [];
-                      });
-                      _updateGameState(newState);
-                    },
-                    tooltip: 'Clear Canvas',
-                    style: IconButton.styleFrom(backgroundColor: Colors.redAccent),
+                  child: Text(
+                    '⌛ $_drawTimerSeconds s',
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent, fontSize: 13),
                   ),
-                ],
-              ),
+                ),
             ],
           ),
         ),
@@ -851,50 +1248,61 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               return GestureDetector(
-                onPanStart: (details) {
-                  final renderBox = context.findRenderObject() as RenderBox;
-                  final localPoint = renderBox.globalToLocal(details.globalPosition);
-                  setState(() {
-                    _currentPoints = [localPoint];
-                  });
-                },
-                onPanUpdate: (details) {
-                  final renderBox = context.findRenderObject() as RenderBox;
-                  final localPoint = renderBox.globalToLocal(details.globalPosition);
-                  
-                  // Clamp points to stay within the canvas bounds
-                  if (localPoint.dx >= 0 && 
-                      localPoint.dx <= constraints.maxWidth && 
-                      localPoint.dy >= 0 && 
-                      localPoint.dy <= constraints.maxHeight) {
-                    setState(() {
-                      _currentPoints.add(localPoint);
-                    });
-                  }
-                },
-                onPanEnd: (details) {
-                  if (_currentPoints.isNotEmpty) {
-                    final newStroke = _DrawingStroke(
-                      points: List<Offset>.from(_currentPoints),
-                      color: currentColor,
-                      width: _selectedWidth,
-                    );
+                onPanStart: isDrawingAllowed
+                    ? (details) {
+                        final renderBox = context.findRenderObject() as RenderBox;
+                        final localPoint = renderBox.globalToLocal(details.globalPosition);
+                        setState(() {
+                          _currentPoints = [localPoint];
+                        });
+                      }
+                    : null,
+                onPanUpdate: isDrawingAllowed
+                    ? (details) {
+                        final renderBox = context.findRenderObject() as RenderBox;
+                        final localPoint = renderBox.globalToLocal(details.globalPosition);
+                        
+                        // Clamp points to stay within the canvas bounds
+                        if (localPoint.dx >= 0 && 
+                            localPoint.dx <= constraints.maxWidth && 
+                            localPoint.dy >= 0 && 
+                            localPoint.dy <= constraints.maxHeight) {
+                          setState(() {
+                            _currentPoints.add(localPoint);
+                          });
+                        }
+                      }
+                    : null,
+                onPanEnd: isDrawingAllowed
+                    ? (details) {
+                        if (_currentPoints.isNotEmpty) {
+                          final newStroke = _DrawingStroke(
+                            points: List<Offset>.from(_currentPoints),
+                            color: currentColor,
+                            width: _selectedWidth,
+                          );
 
-                    final updatedStrokes = List<_DrawingStroke>.from(_drawingStrokes)..add(newStroke);
-                    
-                    // Push updated strokes to database
-                    final newState = {
-                      'strokes': updatedStrokes.map((s) => s.toMap()).toList(),
-                    };
-                    
-                    setState(() {
-                      _drawingStrokes = updatedStrokes;
-                      _currentPoints = [];
-                    });
+                          final updatedStrokes = List<_DrawingStroke>.from(_drawingStrokes)..add(newStroke);
+                          
+                          setState(() {
+                            _drawingStrokes = updatedStrokes;
+                            _currentPoints = [];
+                          });
 
-                    _updateGameState(newState);
-                  }
-                },
+                          // Push updated strokes to database
+                          final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+                          if (_drawCanvasMode == 'competition') {
+                            final drawingsMap = Map<String, dynamic>.from(state['drawings'] as Map? ?? {});
+                            drawingsMap[myId] = updatedStrokes.map((s) => s.toMap()).toList();
+                            state['drawings'] = drawingsMap;
+                          } else {
+                            state['strokes'] = updatedStrokes.map((s) => s.toMap()).toList();
+                          }
+
+                          _updateGameState(state);
+                        }
+                      }
+                    : null,
                 child: Container(
                   width: double.infinity,
                   height: double.infinity,
@@ -914,144 +1322,374 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
         ),
         
         // Toolbar: Mode, Colors, Stroke widths
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: const Color(0xFF131313),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // 1. Tool Mode Selector
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  ChoiceChip(
-                    avatar: const Icon(Icons.edit_rounded, size: 16, color: Colors.white),
-                    label: const Text('Pen', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                    selected: !_isEraserSelected,
-                    selectedColor: Colors.blueAccent,
-                    backgroundColor: Colors.grey[900],
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          _isEraserSelected = false;
-                        });
-                      }
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                  ChoiceChip(
-                    avatar: const Icon(Icons.cleaning_services_rounded, size: 16, color: Colors.white),
-                    label: const Text('Eraser', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                    selected: _isEraserSelected,
-                    selectedColor: Colors.blueAccent,
-                    backgroundColor: Colors.grey[900],
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() {
-                          _isEraserSelected = true;
-                        });
-                      }
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+        if (_drawCanvasMode == 'one_board' || _drawGameStatus == 'drawing')
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: const Color(0xFF131313),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 1. Tool Mode Selector
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ChoiceChip(
+                      avatar: const Icon(Icons.edit_rounded, size: 16, color: Colors.white),
+                      label: const Text('Pen', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      selected: !_isEraserSelected,
+                      selectedColor: Colors.blueAccent,
+                      backgroundColor: Colors.grey[900],
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _isEraserSelected = false;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    ChoiceChip(
+                      avatar: const Icon(Icons.cleaning_services_rounded, size: 16, color: Colors.white),
+                      label: const Text('Eraser', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+                      selected: _isEraserSelected,
+                      selectedColor: Colors.blueAccent,
+                      backgroundColor: Colors.grey[900],
+                      onSelected: (selected) {
+                        if (selected) {
+                          setState(() {
+                            _isEraserSelected = true;
+                          });
+                        }
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
 
-              // 2. Colors Row (Disabled / faded when Eraser is selected)
-              Opacity(
-                opacity: _isEraserSelected ? 0.4 : 1.0,
-                child: IgnorePointer(
-                  ignoring: _isEraserSelected,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: colors.map((color) {
-                        final isSelected = _selectedColor == color && !_isEraserSelected;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 5.0),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedColor = color;
-                              });
-                            },
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: color,
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: isSelected ? Colors.white : Colors.white24,
-                                  width: isSelected ? 2.5 : 1.0,
+                // 2. Colors Row (Disabled / faded when Eraser is selected)
+                Opacity(
+                  opacity: _isEraserSelected ? 0.4 : 1.0,
+                  child: IgnorePointer(
+                    ignoring: _isEraserSelected,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: colors.map((color) {
+                          final isSelected = _selectedColor == color && !_isEraserSelected;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 5.0),
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedColor = color;
+                                });
+                              },
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: isSelected ? Colors.white : Colors.white24,
+                                    width: isSelected ? 2.5 : 1.0,
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: Colors.white.withValues(alpha: 0.4),
+                                            blurRadius: 6,
+                                            spreadRadius: 1,
+                                          )
+                                        ]
+                                      : null,
                                 ),
-                                boxShadow: isSelected
-                                    ? [
-                                        BoxShadow(
-                                          color: Colors.white.withValues(alpha: 0.4),
-                                          blurRadius: 6,
-                                          spreadRadius: 1,
-                                        )
-                                      ]
-                                    : null,
                               ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              
-              // 3. Stroke Width Presets Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Size:  ', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: strokeWidths.map((width) {
-                        final isSelected = _selectedWidth == width;
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6.0),
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _selectedWidth = width;
-                              });
-                            },
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: isSelected ? Colors.blueAccent : Colors.grey[800],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+                const SizedBox(height: 12),
+                
+                // 3. Stroke Width Presets Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text('Size:  ', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: strokeWidths.map((width) {
+                          final isSelected = _selectedWidth == width;
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                            child: GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _selectedWidth = width;
+                                });
+                              },
                               child: Container(
-                                width: width.clamp(2.0, 18.0),
-                                height: width.clamp(2.0, 18.0),
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                  shape: BoxShape.circle,
+                                width: 28,
+                                height: 28,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: isSelected ? Colors.blueAccent : Colors.grey[800],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Container(
+                                  width: width.clamp(2.0, 18.0),
+                                  height: width.clamp(2.0, 18.0),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.white,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      }).toList(),
+                          );
+                        }).toList(),
+                      ),
                     ),
+                  ],
+                ),
+              ],
+            ),
+          )
+        else if (_drawGameStatus == 'rating')
+          _buildRatingToolbar(myId),
+      ],
+    );
+  }
+
+  Widget _buildRatingToolbar(String myId) {
+    final ratedPlayerId = _drawPlayers[_drawCurrentRatingIndex] as String;
+    final isOwnDrawing = ratedPlayerId == myId;
+    final currentRatings = _drawRatings[ratedPlayerId] as Map? ?? {};
+    final existingRating = currentRatings[myId] as int?;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+      color: const Color(0xFF131313),
+      width: double.infinity,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            isOwnDrawing 
+                ? 'Showing your drawing of $_drawTargetWord'
+                : 'Rate Player ${_drawCurrentRatingIndex + 1}\'s drawing of $_drawTargetWord:',
+            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          if (isOwnDrawing)
+            const Text(
+              'Waiting for other players to rate your masterpiece...',
+              style: TextStyle(color: Colors.white54, fontSize: 12, fontStyle: FontStyle.italic),
+            )
+          else if (existingRating != null)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('Your Rating: ', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                ...List.generate(5, (idx) {
+                  return Icon(
+                    idx < existingRating ? Icons.star_rounded : Icons.star_border_rounded,
+                    color: Colors.amberAccent,
+                    size: 28,
+                  );
+                }),
+              ],
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (idx) {
+                final starsCount = idx + 1;
+                return IconButton(
+                  icon: const Icon(Icons.star_outline_rounded, size: 36),
+                  color: Colors.amberAccent,
+                  onPressed: () async {
+                    final state = Map<String, dynamic>.from(_activeSession!['game_state'] as Map? ?? {});
+                    final ratingsMap = Map<String, dynamic>.from(state['ratings'] as Map? ?? {});
+                    final playerRatings = Map<String, dynamic>.from(ratingsMap[ratedPlayerId] as Map? ?? {});
+                    playerRatings[myId] = starsCount;
+                    ratingsMap[ratedPlayerId] = playerRatings;
+                    state['ratings'] = ratingsMap;
+                    await _updateGameState(state);
+                  },
+                );
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawLobbyScreen(String myId) {
+    final hostId = _activeSession?['host_id'] as String? ?? '';
+    final isHost = myId == hostId;
+    final wager = _drawGameState['wager'] as int? ?? 10;
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: GlassCard(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.palette_rounded, size: 64, color: Colors.pinkAccent),
+                const SizedBox(height: 16),
+                const Text('Drawing Canvas Lobby', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22, color: Colors.white)),
+                const SizedBox(height: 8),
+                Text('Required Wager: $wager Credits', style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Competition Mode: Draw the random thing/animal privately within 60 seconds, then rate everyone else\'s drawings!',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                
+                const Text('Joined Players:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54)),
+                const SizedBox(height: 12),
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _drawPlayers.length,
+                  itemBuilder: (context, idx) {
+                    final uid = _drawPlayers[idx] as String;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.04), borderRadius: BorderRadius.circular(10)),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.person, size: 16, color: Colors.pinkAccent),
+                          const SizedBox(width: 12),
+                          Text(uid == myId ? 'You' : 'Player ${idx + 1}', style: const TextStyle(color: Colors.white)),
+                          const Spacer(),
+                          if (uid == hostId) const Text('HOST', style: TextStyle(fontSize: 10, color: Colors.greenAccent)),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 30),
+                if (!_drawPlayers.contains(myId) && _drawPlayers.length < 6)
+                  FilledButton(
+                    onPressed: _joinDrawLobby,
+                    style: FilledButton.styleFrom(backgroundColor: Colors.pinkAccent),
+                    child: const Text('Join Lobby'),
+                  )
+                else if (isHost)
+                  FilledButton(
+                    onPressed: _drawPlayers.isNotEmpty ? _startDrawGame : null,
+                    style: FilledButton.styleFrom(backgroundColor: Colors.pinkAccent),
+                    child: const Text('Start Game'),
+                  )
+                else
+                  Column(
+                    children: [
+                      const CircularProgressIndicator(color: Colors.pinkAccent),
+                      const SizedBox(height: 8),
+                      const Text('Waiting for host to start...', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                    ],
                   ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildDrawEndedScreen(String myId) {
+    final winId = _drawGameState['winner_id'] as String? ?? '';
+    final isWinnerMe = myId == winId;
+    final scoresMap = _drawGameState['scores'] as Map? ?? {};
+    
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: GlassCard(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events_rounded, size: 80, color: Colors.amberAccent),
+                const SizedBox(height: 16),
+                const Text('Game Finished! 🏁', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.white)),
+                const SizedBox(height: 12),
+                Text(
+                  isWinnerMe ? 'Congratulations! You won the pot! 🎉' : 'Winner: Player ${_drawPlayers.indexOf(winId) + 1}',
+                  style: const TextStyle(fontSize: 18, color: Colors.greenAccent, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                const Text('Leaderboard:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 14)),
+                const SizedBox(height: 12),
+                ...List.generate(_drawPlayers.length, (idx) {
+                  final uid = _drawPlayers[idx] as String;
+                  final avgScore = (scoresMap[uid] as num? ?? 0.0).toDouble();
+                  final isMe = uid == myId;
+                  final isPlayerWinner = uid == winId;
+                  
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isPlayerWinner 
+                          ? Colors.amberAccent.withOpacity(0.1) 
+                          : Colors.white.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isPlayerWinner ? Colors.amberAccent : Colors.transparent,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${isPlayerWinner ? "👑 " : ""}${isMe ? "You" : "Player ${idx + 1}"}',
+                          style: TextStyle(
+                            fontWeight: isPlayerWinner ? FontWeight.bold : FontWeight.normal,
+                            color: Colors.white,
+                          ),
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              avgScore.toStringAsFixed(1),
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.amberAccent),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.star_rounded, color: Colors.amberAccent, size: 16),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                const SizedBox(height: 32),
+                FilledButton(
+                  onPressed: _exitGame,
+                  style: FilledButton.styleFrom(backgroundColor: Colors.pinkAccent),
+                  child: const Text('Return to Lobby'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

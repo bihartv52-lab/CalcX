@@ -163,7 +163,7 @@ class _ScribbleGameWidgetState extends ConsumerState<ScribbleGameWidget> {
     }
 
     // Pick drawer and word options
-    final initialScores = {for (var uid in players) uid: 0};
+    final Map<String, int> initialScores = {for (var uid in players) uid.toString(): 0};
     _startRound(1, players.first as String, initialScores);
   }
 

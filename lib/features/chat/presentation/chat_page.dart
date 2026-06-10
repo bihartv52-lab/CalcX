@@ -98,26 +98,35 @@ final otherUserProfileProvider = StreamProvider.family<UserProfile?, String>((
       .map((data) => data.isNotEmpty ? UserProfile.fromMap(data.first) : null);
 });
 
-// Realtime Stream for Message Reactions
-final messageReactionsProvider = StreamProvider.family<List<String>, String>((ref, messageId) {
+// Realtime Future for Message Reactions
+final messageReactionsProvider = FutureProvider.family<List<String>, String>((ref, messageId) async {
   final client = SupabaseService.clientOrNull;
-  if (client == null) return const Stream.empty();
-  return client
-      .from('message_reactions')
-      .stream(primaryKey: ['id'])
-      .eq('message_id', messageId)
-      .map((data) => data.map((json) => json['emoji'] as String).toList());
+  if (client == null) return [];
+  try {
+    final response = await client
+        .from('message_reactions')
+        .select('emoji')
+        .eq('message_id', messageId);
+    return (response as List).map((json) => json['emoji'] as String).toList();
+  } catch (_) {
+    return [];
+  }
 });
 
-// Realtime Stream for Message Read Receipts
-final messageReadStatusProvider = StreamProvider.family<bool, String>((ref, messageId) {
+// Realtime Future for Message Read Receipts
+final messageReadStatusProvider = FutureProvider.family<bool, String>((ref, messageId) async {
   final client = SupabaseService.clientOrNull;
-  if (client == null) return const Stream.empty();
-  return client
-      .from('message_reads')
-      .stream(primaryKey: ['id'])
-      .eq('message_id', messageId)
-      .map((data) => data.isNotEmpty);
+  if (client == null) return false;
+  try {
+    final response = await client
+        .from('message_reads')
+        .select()
+        .eq('message_id', messageId)
+        .maybeSingle();
+    return response != null;
+  } catch (_) {
+    return false;
+  }
 });
 
 // Future to fetch message details for replies
@@ -152,6 +161,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   bool _showNewMessagesBanner = false;
   int _unreadCount = 0;
 
+  RealtimeChannel? _readsSubscription;
+  RealtimeChannel? _reactionsSubscription;
+
   Timer? _typingThrottleTimer;
   Timer? _typingClearTimer;
 
@@ -175,6 +187,43 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         });
       }
     });
+
+    final client = SupabaseService.clientOrNull;
+    if (client != null) {
+      _readsSubscription = client
+          .channel('dm_reads_${widget.otherUserId}')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'message_reads',
+            callback: (payload) {
+              final record = payload.newRecord;
+              final messageId = record['message_id'] as String?;
+              if (messageId != null) {
+                ref.invalidate(messageReadStatusProvider(messageId));
+              }
+            },
+          );
+      _readsSubscription!.subscribe();
+
+      _reactionsSubscription = client
+          .channel('dm_reactions_${widget.otherUserId}')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'message_reactions',
+            callback: (payload) {
+              final record = payload.newRecord;
+              final oldRecord = payload.oldRecord;
+              final messageId = (record['message_id'] ?? oldRecord['message_id']) as String?;
+              if (messageId != null) {
+                ref.invalidate(messageReactionsProvider(messageId));
+              }
+            },
+          );
+      _reactionsSubscription!.subscribe();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatRepositoryProvider).markAllAsRead(widget.otherUserId);
       ref.invalidate(recentChatsProvider);
@@ -190,6 +239,17 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     _recordTimer?.cancel();
     _audioRecorder.dispose();
     _setTyping(false);
+
+    final client = SupabaseService.clientOrNull;
+    if (client != null) {
+      if (_readsSubscription != null) {
+        client.removeChannel(_readsSubscription!);
+      }
+      if (_reactionsSubscription != null) {
+        client.removeChannel(_reactionsSubscription!);
+      }
+    }
+
     super.dispose();
   }
 
@@ -386,6 +446,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                       return GestureDetector(
                         onTap: () {
                           ref.read(chatRepositoryProvider).addReaction(message.id, emoji);
+                          ref.invalidate(messageReactionsProvider(message.id));
                           Navigator.pop(context);
                         },
                         child: ScaleTransition(
@@ -816,6 +877,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                 onDoubleTap: () {
                                   HapticFeedback.lightImpact();
                                   ref.read(chatRepositoryProvider).addReaction(message.id, '❤️');
+                                  ref.invalidate(messageReactionsProvider(message.id));
                                 },
                                 onLongPress: () => _showMessageMenu(message),
                                 child: _MessageBubble(message: message, isMe: isMe, isGrouped: isGrouped),
@@ -1559,6 +1621,7 @@ class _AnimatedReactionChipState extends State<_AnimatedReactionChip>
             onTap: () {
               HapticFeedback.lightImpact();
               ref.read(chatRepositoryProvider).removeReaction(widget.messageId, widget.emoji);
+              ref.invalidate(messageReactionsProvider(widget.messageId));
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

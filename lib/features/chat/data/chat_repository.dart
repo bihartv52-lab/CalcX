@@ -30,50 +30,51 @@ class ChatRepository {
     final myId = supabase.auth.currentUser?.id;
     if (myId == null) return const Stream.empty();
 
-    final stream1 = supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('sender_id', myId)
-        .order('created_at', ascending: false)
-        .limit(80);
-
-    final stream2 = supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('sender_id', otherUserId)
-        .order('created_at', ascending: false)
-        .limit(80);
-
     final controller = StreamController<List<Message>>();
 
-    List<Message> list1 = [];
-    List<Message> list2 = [];
-
-    void emit() {
-      final combined = [...list1, ...list2];
-      combined.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      controller.add(combined);
+    void fetchMessages() async {
+      try {
+        final response = await supabase
+            .from('messages')
+            .select()
+            .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
+            .filter('room_id', 'is', null)
+            .order('created_at', ascending: false)
+            .limit(100);
+        if (controller.isClosed) return;
+        final list = (response as List).map(Message.fromMap).toList();
+        controller.add(list);
+      } catch (e) {
+        debugPrint('Error fetching direct messages: $e');
+      }
     }
 
-    final sub1 = stream1.listen((data) {
-      list1 = data
-          .where((json) => json['room_id'] == null && json['receiver_id'] == otherUserId)
-          .map(Message.fromMap)
-          .toList();
-      emit();
-    });
+    // Initial fetch
+    fetchMessages();
 
-    final sub2 = stream2.listen((data) {
-      list2 = data
-          .where((json) => json['room_id'] == null && json['receiver_id'] == myId)
-          .map(Message.fromMap)
-          .toList();
-      emit();
-    });
+    // Setup channel for realtime changes
+    final channel = supabase.channel('dm_${myId}_$otherUserId');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'messages',
+      callback: (payload) {
+        final record = payload.newRecord;
+        final oldRecord = payload.oldRecord;
+        
+        final sId = record['sender_id'] ?? oldRecord['sender_id'];
+        final rId = record['receiver_id'] ?? oldRecord['receiver_id'];
+        final roomId = record['room_id'] ?? oldRecord['room_id'];
+        
+        if (roomId == null && 
+            ((sId == myId && rId == otherUserId) || (sId == otherUserId && rId == myId))) {
+          fetchMessages();
+        }
+      },
+    ).subscribe();
 
     controller.onCancel = () {
-      sub1.cancel();
-      sub2.cancel();
+      supabase.removeChannel(channel);
     };
 
     return controller.stream;
@@ -83,16 +84,48 @@ class ChatRepository {
     final supabase = _supabase;
     if (supabase == null) return const Stream.empty();
 
-    return supabase
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .eq('room_id', roomId)
-        .order('created_at', ascending: false)
-        .limit(100)
-        .map((data) {
-          final list = data.map(Message.fromMap).toList();
-          return list.reversed.toList();
-        });
+    final controller = StreamController<List<Message>>();
+
+    void fetchMessages() async {
+      try {
+        final response = await supabase
+            .from('messages')
+            .select()
+            .eq('room_id', roomId)
+            .order('created_at', ascending: false)
+            .limit(100);
+        if (controller.isClosed) return;
+        final list = (response as List).map(Message.fromMap).toList();
+        controller.add(list.reversed.toList());
+      } catch (e) {
+        debugPrint('Error fetching room messages: $e');
+      }
+    }
+
+    // Initial fetch
+    fetchMessages();
+
+    // Setup channel for realtime changes
+    final channel = supabase.channel('room_$roomId');
+    channel.onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'messages',
+      callback: (payload) {
+        final record = payload.newRecord;
+        final oldRecord = payload.oldRecord;
+        final rId = record['room_id'] ?? oldRecord['room_id'];
+        if (rId == roomId) {
+          fetchMessages();
+        }
+      },
+    ).subscribe();
+
+    controller.onCancel = () {
+      supabase.removeChannel(channel);
+    };
+
+    return controller.stream;
   }
 
   Future<void> sendMessage({
