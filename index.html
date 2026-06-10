@@ -261,7 +261,7 @@
         /* Feature Gallery / Gameplay UI Showcases */
         .gallery-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
             gap: 32px;
             margin-bottom: 80px;
         }
@@ -627,8 +627,8 @@
         <!-- Gameplay UI Showcases Section -->
         <section style="margin-top: 40px;">
             <div class="section-header">
-                <h2>Real-Time Native Gaming</h2>
-                <p>No web links, no external embeds. CalcX features completely custom-built multiplayer games with real-time wagers and synchronized canvas controls.</p>
+                <h2>Real-Time Gaming & Watch Party Hub</h2>
+                <p>No external embeds. CalcX features completely custom-built multiplayer wagers, synchronized canvas games, and real-time video playback VC parties.</p>
             </div>
             <div class="gallery-grid">
                 <div class="gallery-card">
@@ -652,6 +652,18 @@
                     <h3 class="gallery-title">Scribble Rooms</h3>
                     <p class="gallery-description">
                         Take turns drawing objects on a synchronized screen while other players guess in real-time. Correct guesses dynamically award score points.
+                    </p>
+                </div>
+
+                <div class="gallery-card">
+                    <div class="gallery-img-wrapper">
+                        <!-- Watch Party Gameplay VC Mockup -->
+                        <img src="watch_party_mockup.png" alt="Watch Party Real-Time Sync VC Screen">
+                    </div>
+                    <div class="gallery-badge">Real-Time VC Sync</div>
+                    <h3 class="gallery-title">Watch Parties</h3>
+                    <p class="gallery-description">
+                        Stream videos or watch movies with friends in lockstep synchronization while enjoying active HD voice and video calls in your secret room space.
                     </p>
                 </div>
             </div>
