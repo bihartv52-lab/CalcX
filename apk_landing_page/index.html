@@ -90,12 +90,15 @@
             font-size: 26px;
             font-weight: 900;
             letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo span.text {
             background: linear-gradient(to right, #a5b4fc, #34d399);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            display: flex;
-            align-items: center;
-            gap: 10px;
         }
 
         .container {
@@ -579,7 +582,8 @@
 
     <header>
         <div class="logo">
-            <span>🧮</span> CalcX
+            <img src="logo.jpg" alt="CalcX Logo" style="width: 36px; height: 36px; border-radius: 8px; display: block; object-fit: cover;">
+            <span class="text">CalcX</span>
         </div>
         <a href="#download" class="cta-btn" style="padding: 12px 24px; font-size: 15px; box-shadow: none;">Get CalcX APK</a>
     </header>
