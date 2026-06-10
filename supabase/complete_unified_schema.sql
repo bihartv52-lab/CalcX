@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- Credits System Integration (patch v3)
-  credits INTEGER DEFAULT 100 CHECK (credits >= 0)
+  credits INTEGER DEFAULT 100
 );
 
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
@@ -241,27 +241,16 @@ CREATE POLICY "Users can read own transactions"
 -- place_bet: safe atomic credit deduction for joining a lobby
 CREATE OR REPLACE FUNCTION place_bet(player_id UUID, bet_amount INTEGER)
 RETURNS BOOLEAN AS $$
-DECLARE
-  current_balance INTEGER;
 BEGIN
-  -- Row lock profile to prevent race conditions / duplicate spends
-  SELECT credits INTO current_balance 
-  FROM public.profiles 
-  WHERE id = player_id 
-  FOR UPDATE;
+  -- Deduct wager from profile (allows negative balance for unlimited wagers in start)
+  UPDATE public.profiles 
+  SET credits = credits - bet_amount 
+  WHERE id = player_id;
   
-  IF current_balance >= bet_amount THEN
-    UPDATE public.profiles 
-    SET credits = credits - bet_amount 
-    WHERE id = player_id;
-    
-    INSERT INTO public.credit_transactions (user_id, amount, description)
-    VALUES (player_id, -bet_amount, 'Bet Wager Placed');
-    
-    RETURN TRUE;
-  ELSE
-    RETURN FALSE;
-  END IF;
+  INSERT INTO public.credit_transactions (user_id, amount, description)
+  VALUES (player_id, -bet_amount, 'Bet Wager Placed');
+  
+  RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

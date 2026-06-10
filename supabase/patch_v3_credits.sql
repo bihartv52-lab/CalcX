@@ -1,9 +1,9 @@
 -- CalcX Supabase Patch v3: Credit System
 -- Run this in your Supabase SQL Editor
 
--- 1. Add credit balance to profiles (defaults to 100 credits, cannot be negative)
+-- 1. Add credit balance to profiles (defaults to 100 credits)
 ALTER TABLE public.profiles 
-ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 100 CHECK (credits >= 0);
+ADD COLUMN IF NOT EXISTS credits INTEGER DEFAULT 100;
 
 -- 2. Create transactions tracking table
 CREATE TABLE IF NOT EXISTS public.credit_transactions (
@@ -23,32 +23,20 @@ CREATE POLICY "Users can view own transactions"
   TO authenticated 
   USING (auth.uid() = user_id);
 
--- 5. Safe stored procedure to place a game wager (subtracts credits & creates transaction logs)
+-- 5. Safe stored procedure to place a game wager (allows negative wagers for unlimited credits in start)
 CREATE OR REPLACE FUNCTION place_bet(player_id UUID, bet_amount INTEGER)
 RETURNS BOOLEAN AS $$
-DECLARE
-  current_balance INTEGER;
 BEGIN
-  -- Obtain exclusive row lock on profile balance
-  SELECT credits INTO current_balance 
-  FROM public.profiles 
-  WHERE id = player_id 
-  FOR UPDATE;
+  -- Deduct balance
+  UPDATE public.profiles 
+  SET credits = credits - bet_amount 
+  WHERE id = player_id;
   
-  IF current_balance >= bet_amount THEN
-    -- Deduct balance
-    UPDATE public.profiles 
-    SET credits = credits - bet_amount 
-    WHERE id = player_id;
-    
-    -- Insert transaction log
-    INSERT INTO public.credit_transactions (user_id, amount, description)
-    VALUES (player_id, -bet_amount, 'Bet Wager Placed');
-    
-    RETURN TRUE;
-  ELSE
-    RETURN FALSE;
-  END IF;
+  -- Insert transaction log
+  INSERT INTO public.credit_transactions (user_id, amount, description)
+  VALUES (player_id, -bet_amount, 'Bet Wager Placed');
+  
+  RETURN TRUE;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

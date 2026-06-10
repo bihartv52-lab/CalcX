@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -247,6 +248,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating setting: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _launchApkDownload() async {
+    final url = Uri.parse('https://bihartv52-2243s-projects.vercel.app/');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open download page')),
         );
       }
     }
@@ -629,6 +643,33 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ref.read(reduceMotionProvider.notifier).setEnabled(value);
                 },
                 title: const Text('Reduce motion'),
+              ),
+            ],
+          ),
+        ),
+        GlassCard(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'CalcX Version & Updates',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Ensure your app has the latest privacy features, encrypted chats, and game wagers.',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _launchApkDownload,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Download Latest APK'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xff10b981), // Premium green accent
+                  foregroundColor: Colors.white,
+                ),
               ),
             ],
           ),
