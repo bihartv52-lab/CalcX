@@ -42,7 +42,7 @@ class ChatRepository {
             .order('created_at', ascending: false)
             .limit(100);
         if (controller.isClosed) return;
-        final list = (response as List).map(Message.fromMap).toList();
+        final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
         controller.add(list);
       } catch (e) {
         debugPrint('Error fetching direct messages: $e');
@@ -95,7 +95,7 @@ class ChatRepository {
             .order('created_at', ascending: false)
             .limit(100);
         if (controller.isClosed) return;
-        final list = (response as List).map(Message.fromMap).toList();
+        final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
         controller.add(list.reversed.toList());
       } catch (e) {
         debugPrint('Error fetching room messages: $e');

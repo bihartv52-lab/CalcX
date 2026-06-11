@@ -84,6 +84,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
       await repository.acceptCall(widget.call.id);
 
       if (mounted) {
+        ref.read(isCallScreenShowingProvider.notifier).state = true;
         // Navigate to active call page
         Navigator.pushReplacement(
           context,

@@ -564,6 +564,7 @@ class _OngoingCallTopBannerState extends ConsumerState<_OngoingCallTopBanner> {
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
           child: GestureDetector(
             onTap: () {
+              ref.read(isCallScreenShowingProvider.notifier).state = true;
               final rootKey = ref.read(rootNavigatorKeyProvider);
               final rootContext = rootKey.currentContext;
               if (rootContext != null) {
@@ -771,6 +772,7 @@ class _DraggableCallOverlayState extends ConsumerState<_DraggableCallOverlay> {
           });
         },
         onTap: () {
+          ref.read(isCallScreenShowingProvider.notifier).state = true;
           final rootKey = ref.read(rootNavigatorKeyProvider);
           final rootContext = rootKey.currentContext;
           if (rootContext != null) {
@@ -917,6 +919,7 @@ class _DraggableCallOverlayState extends ConsumerState<_DraggableCallOverlay> {
                         // Maximize/Fullscreen Button
                         GestureDetector(
                           onTap: () {
+                            ref.read(isCallScreenShowingProvider.notifier).state = true;
                             final rootKey = ref.read(rootNavigatorKeyProvider);
                             final rootContext = rootKey.currentContext;
                             if (rootContext != null) {

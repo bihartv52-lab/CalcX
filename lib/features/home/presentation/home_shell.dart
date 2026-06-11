@@ -260,6 +260,7 @@ class _TopBar extends ConsumerWidget {
                         callType: callType,
                       );
                       if (context.mounted) {
+                        ref.read(isCallScreenShowingProvider.notifier).state = true;
                         Navigator.push(
                           context,
                           MaterialPageRoute(

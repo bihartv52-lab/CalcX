@@ -1095,6 +1095,9 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
           ],
         ),
       ),
+    );
+  }
+
   Widget _buildDrawingBoard() {
     final client = SupabaseService.clientOrNull;
     final myId = client?.auth.currentUser?.id ?? '';

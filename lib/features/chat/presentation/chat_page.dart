@@ -20,6 +20,8 @@ import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:better_player_plus/better_player_plus.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:http/http.dart' as http;
 
 const Map<String, String> animatedEmojiMap = {
   '❤️': 'https://cdn.jsdelivr.net/gh/Tarikul-Islam-Anik/Telegram-Animated-Emojis@main/Symbols/Red%20Heart.webp',
@@ -612,6 +614,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   callType: 'audio',
                 );
                 if (context.mounted) {
+                  ref.read(isCallScreenShowingProvider.notifier).state = true;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -638,6 +641,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   callType: 'video',
                 );
                 if (context.mounted) {
+                  ref.read(isCallScreenShowingProvider.notifier).state = true;
                   Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -886,7 +890,6 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
                             // Micro-animation wrapper
                             final animatedBubble = TweenAnimationBuilder<double>(
-                              key: ValueKey(message.id),
                               tween: Tween(begin: 0.0, end: 1.0),
                               duration: const Duration(milliseconds: 260),
                               curve: Curves.easeOutQuad,
@@ -899,9 +902,11 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                               child: bubbleWidget,
                             );
 
-                            if (showDivider) {
-                              return Column(
-                                children: [
+                            return Column(
+                              key: ValueKey(message.id),
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (showDivider)
                                   Padding(
                                     padding: const EdgeInsets.symmetric(vertical: 12.0),
                                     child: Row(
@@ -922,12 +927,9 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                                       ],
                                     ),
                                   ),
-                                  animatedBubble,
-                                ],
-                              );
-                            }
-
-                            return animatedBubble;
+                                animatedBubble,
+                              ],
+                            );
                           },
                         ),
 
@@ -1885,6 +1887,76 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
     }
   }
 
+  Future<void> _saveAudioToDevice(BuildContext context, String url) async {
+    // Show download indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Downloading audio recording...')),
+    );
+
+    try {
+      final uri = Uri.parse(url);
+      final response = await http.get(uri);
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download file (Status: ${response.statusCode})');
+      }
+
+      final bytes = response.bodyBytes;
+
+      // Extract filename or fallback
+      String fileName = 'calcx_audio_${DateTime.now().millisecondsSinceEpoch}.mp3';
+      if (uri.pathSegments.isNotEmpty) {
+        fileName = uri.pathSegments.last;
+      }
+      if (!fileName.contains('.')) {
+        fileName = '$fileName.mp3';
+      }
+
+      // Try saving directly to Downloads directory (on Android or Desktop)
+      Directory? dir;
+      bool savedDirectly = false;
+
+      if (Platform.isAndroid) {
+        // Scoped downloads folder on Android
+        dir = Directory('/storage/emulated/0/Download');
+        if (await dir.exists()) {
+          final file = File('${dir.path}/$fileName');
+          await file.writeAsBytes(bytes);
+          savedDirectly = true;
+        }
+      } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
+        dir = await getDownloadsDirectory();
+        if (dir != null && await dir.exists()) {
+          final file = File('${dir.path}/$fileName');
+          await file.writeAsBytes(bytes);
+          savedDirectly = true;
+        }
+      }
+
+      if (savedDirectly && dir != null) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Saved to Downloads: $fileName')),
+        );
+      } else {
+        // Fallback for iOS or when direct folder access is restricted
+        final tempDir = await getTemporaryDirectory();
+        final tempFile = File('${tempDir.path}/$fileName');
+        await tempFile.writeAsBytes(bytes);
+
+        await Share.shareXFiles(
+          [XFile(tempFile.path)],
+          text: 'Save CalcX Audio Recording',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error saving audio: $e');
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save audio: $e')),
+      );
+    }
+  }
+
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(duration.inMinutes.remainder(60));
@@ -1960,6 +2032,14 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.download_rounded, color: Colors.white70, size: 20),
+            onPressed: () => _saveAudioToDevice(context, widget.audioUrl),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Save to device',
           ),
         ],
       ),

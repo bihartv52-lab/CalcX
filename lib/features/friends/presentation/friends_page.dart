@@ -300,6 +300,7 @@ class _FriendTile extends ConsumerWidget {
                   callType: 'audio',
                 );
                 if (context.mounted) {
+                  ref.read(isCallScreenShowingProvider.notifier).state = true;
                   Navigator.push(
                     context,
                     MaterialPageRoute(

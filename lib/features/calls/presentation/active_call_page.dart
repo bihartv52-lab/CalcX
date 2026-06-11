@@ -28,8 +28,10 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
     _receiverProfile = widget.call.receiverProfile;
     _fetchProfilesIfNeeded();
 
+    // Set call screen showing synchronously to true to hide overlays immediately
+    ref.read(isCallScreenShowingProvider.notifier).state = true;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(isCallScreenShowingProvider.notifier).state = true;
       final session = ref.read(activeCallSessionProvider);
       if (session == null || session.call.id != widget.call.id) {
         ref.read(activeCallSessionProvider.notifier).startCallSession(widget.call);

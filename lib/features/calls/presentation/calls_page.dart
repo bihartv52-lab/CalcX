@@ -195,6 +195,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                                 callType: 'audio',
                               );
                               if (context.mounted) {
+                                ref.read(isCallScreenShowingProvider.notifier).state = true;
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -221,6 +222,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                                 callType: 'video',
                               );
                               if (context.mounted) {
+                                ref.read(isCallScreenShowingProvider.notifier).state = true;
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
