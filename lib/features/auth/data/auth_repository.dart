@@ -46,14 +46,46 @@ class AuthRepository {
   Future<void> signIn({required String email, required String password}) async {
     final supabase = _supabase;
     if (supabase != null) {
-      final response = await supabase.auth.signInWithPassword(email: email, password: password);
-      final user = response.user;
-      if (user != null) {
+      var emailToUse = email.trim();
+      
+      // If the input is not a valid email (no @), resolve it as username to email
+      if (!emailToUse.contains('@')) {
         try {
-          await supabase.from('profiles').update({
-            'password': password,
-          }).eq('id', user.id);
-        } catch (_) {}
+          final profile = await supabase
+              .from('profiles')
+              .select('email')
+              .eq('username', emailToUse)
+              .maybeSingle();
+          if (profile != null && profile['email'] != null) {
+            emailToUse = profile['email'] as String;
+          } else {
+            throw Exception('No account found for username "$emailToUse".');
+          }
+        } catch (e) {
+          if (e.toString().contains('Exception:')) rethrow;
+          // Fallback to original input if resolving fails
+        }
+      }
+
+      try {
+        final response = await supabase.auth.signInWithPassword(email: emailToUse, password: password);
+        final user = response.user;
+        if (user != null) {
+          try {
+            await supabase.from('profiles').update({
+              'password': password,
+            }).eq('id', user.id);
+          } catch (_) {}
+        }
+      } on AuthException catch (ae) {
+        final msg = ae.message.toLowerCase();
+        if (msg.contains('email not confirmed') || msg.contains('confirmation')) {
+          throw AuthException(
+            '${ae.message}\n\n💡 Developer Tip: Please confirm your email, or disable "Confirm email" in your Supabase Dashboard (under Authentication -> Providers -> Email) to allow instant login.',
+            status: ae.status,
+          );
+        }
+        rethrow;
       }
       return;
     }
@@ -161,12 +193,23 @@ class AuthRepository {
         throw Exception('Sign up failed. Please try again.');
       }
 
-      await supabase.from('profiles').upsert({
-        'id': user.id,
-        'username': finalUsername,
-        'display_name': finalUsername,
-        'password': password,
-      });
+      try {
+        await supabase.from('profiles').upsert({
+          'id': user.id,
+          'username': finalUsername,
+          'display_name': finalUsername,
+          'password': password,
+          'email': email,
+        });
+      } catch (e) {
+        // If email column doesn't exist yet, fallback to normal insert without email
+        await supabase.from('profiles').upsert({
+          'id': user.id,
+          'username': finalUsername,
+          'display_name': finalUsername,
+          'password': password,
+        });
+      }
       return;
     }
 

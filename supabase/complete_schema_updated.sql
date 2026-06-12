@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT UNIQUE NOT NULL,
   display_name TEXT NOT NULL,
+  email TEXT,
   avatar_url TEXT,
   bio TEXT,
   status TEXT DEFAULT 'offline', -- online, offline, away, busy
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- Add index for username search
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);
 CREATE INDEX IF NOT EXISTS idx_profiles_display_name ON profiles(display_name);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
 
 -- ============================================
 -- FRIENDS SYSTEM

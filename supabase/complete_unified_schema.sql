@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   username TEXT UNIQUE NOT NULL CHECK (char_length(username) between 3 and 24),
   display_name TEXT NOT NULL,
+  email TEXT,
   avatar_url TEXT,
   bio TEXT,
   is_online BOOLEAN NOT NULL DEFAULT false,
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
 CREATE INDEX IF NOT EXISTS idx_profiles_username ON public.profiles(username);
 CREATE INDEX IF NOT EXISTS idx_profiles_display_name ON public.profiles(display_name);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
 
 -- ==========================================================
 -- 2. FRIENDS & RELATIONS
@@ -346,14 +348,24 @@ CREATE TRIGGER update_rooms_updated_at BEFORE UPDATE ON public.rooms FOR EACH RO
 -- User signup trigger (Auto-inserts auth.users metadata into public.profiles)
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
 RETURNS TRIGGER AS $$
+DECLARE
+  username_val TEXT;
 BEGIN
-  INSERT INTO public.profiles (id, username, display_name, credits)
+  username_val := coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1));
+
+  INSERT INTO public.profiles (id, username, display_name, email, credits)
   VALUES (
     new.id, 
-    split_part(new.email, '@', 1), 
-    split_part(new.email, '@', 1),
+    username_val, 
+    username_val,
+    new.email,
     100 -- Default Credits set to 100
-  );
+  )
+  ON CONFLICT (id) DO UPDATE SET 
+    email = EXCLUDED.email,
+    username = EXCLUDED.username,
+    display_name = EXCLUDED.display_name;
+    
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

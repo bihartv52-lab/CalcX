@@ -376,12 +376,12 @@ class _AuthPageState extends ConsumerState<AuthPage>
           ),
           const SizedBox(height: 28),
 
-          // Email
+          // Email or Username
           _NeonTextField(
             controller: _email,
-            label: 'Email',
+            label: _signup ? 'Email' : 'Email or Username',
             icon: Icons.alternate_email_rounded,
-            keyboardType: TextInputType.emailAddress,
+            keyboardType: _signup ? TextInputType.emailAddress : TextInputType.text,
           ),
 
           // Username (signup only)
