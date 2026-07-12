@@ -37,6 +37,9 @@ class AuthRepository {
   /// Returns true if a user is signed in (either Supabase or local).
   Future<bool> isSignedIn() async {
     if (!_useLocal) {
+      if (currentUser == null) {
+        await Future.delayed(const Duration(milliseconds: 250));
+      }
       return currentUser != null;
     }
     final localUser = await _storage.read(key: _localUserKey);
