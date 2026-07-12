@@ -19,6 +19,7 @@ import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class RoomWatchPartyPage extends ConsumerStatefulWidget {
   const RoomWatchPartyPage({
@@ -448,7 +449,12 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
         _currentSourceUrl = url;
       });
 
-      if (_webViewController != null) {
+      if (kIsWeb) {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      } else if (_webViewController != null) {
         await _webViewController!.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
       }
 
