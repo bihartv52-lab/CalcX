@@ -12,6 +12,8 @@ import 'package:calcx/features/rooms/presentation/widgets/room_chat_sidebar.dart
 import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
+import 'package:calcx/core/widgets/web_iframe_widget.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:file_picker/file_picker.dart';
@@ -401,6 +403,14 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
         return;
       }
 
+      _currentSourceUrl = 'https://www.youtube.com/embed/$videoId';
+      if (kIsWeb) {
+        setState(() {
+          _sourceType = 'youtube';
+        });
+        return;
+      }
+
       _youtubeController?.dispose();
       _betterPlayerController?.dispose();
       _betterPlayerController = null;
@@ -693,61 +703,73 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           children: [
             // The Player
             Positioned.fill(
-              child: _sourceType == 'youtube' && _youtubeController != null
+              child: kIsWeb
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
-                      child: YoutubePlayer(
-                        controller: _youtubeController!,
-                        showVideoProgressIndicator: true,
-                        progressIndicatorColor: Theme.of(context).colorScheme.primary,
-                        onReady: () => setState(() {}),
-                        onEnded: (data) => setState(() {}),
-                      ),
-                    )
-                  : _sourceType == 'browser'
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
-                          child: InAppWebView(
-                            initialUrlRequest: URLRequest(url: WebUri(_currentSourceUrl ?? 'https://google.com')),
-                            initialSettings: InAppWebViewSettings(
-                              javaScriptEnabled: true,
-                              domStorageEnabled: true,
-                              databaseEnabled: true,
-                              allowsInlineMediaPlayback: true,
-                              useHybridComposition: true,
-                              mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-                              useShouldOverrideUrlLoading: true,
-                              mediaPlaybackRequiresUserGesture: false,
-                            ),
-                            onWebViewCreated: (controller) {
-                              _webViewController = controller;
-                            },
-                            onLoadStop: (controller, url) async {
-                              if (isHost && url != null) {
-                                final urlStr = url.toString();
-                                if (urlStr != _currentSourceUrl) {
-                                  _currentSourceUrl = urlStr;
-                                  _urlController.text = urlStr;
-                                  _syncPlayback(showSnackBar: false);
-                                }
-                              }
-                            },
-                          ),
-                        )
-                      : _betterPlayerController != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
-                              child: BetterPlayer(
-                                key: _betterPlayerKey,
-                                controller: _betterPlayerController!,
-                              ),
-                            )
+                      child: _currentSourceUrl != null && _currentSourceUrl!.isNotEmpty
+                          ? createIFrameWidget(_currentSourceUrl!)
                           : Container(
                               color: Colors.black,
                               child: const Center(
                                 child: Text('No video loaded', style: TextStyle(color: Colors.white60)),
                               ),
                             ),
+                    )
+                  : _sourceType == 'youtube' && _youtubeController != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
+                          child: YoutubePlayer(
+                            controller: _youtubeController!,
+                            showVideoProgressIndicator: true,
+                            progressIndicatorColor: Theme.of(context).colorScheme.primary,
+                            onReady: () => setState(() {}),
+                            onEnded: (data) => setState(() {}),
+                          ),
+                        )
+                      : _sourceType == 'browser'
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
+                              child: InAppWebView(
+                                initialUrlRequest: URLRequest(url: WebUri(_currentSourceUrl ?? 'https://google.com')),
+                                initialSettings: InAppWebViewSettings(
+                                  javaScriptEnabled: true,
+                                  domStorageEnabled: true,
+                                  databaseEnabled: true,
+                                  allowsInlineMediaPlayback: true,
+                                  useHybridComposition: true,
+                                  mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                                  useShouldOverrideUrlLoading: true,
+                                  mediaPlaybackRequiresUserGesture: false,
+                                ),
+                                onWebViewCreated: (controller) {
+                                  _webViewController = controller;
+                                },
+                                onLoadStop: (controller, url) async {
+                                  if (isHost && url != null) {
+                                    final urlStr = url.toString();
+                                    if (urlStr != _currentSourceUrl) {
+                                      _currentSourceUrl = urlStr;
+                                      _urlController.text = urlStr;
+                                      _syncPlayback(showSnackBar: false);
+                                    }
+                                  }
+                                },
+                              ),
+                            )
+                          : _betterPlayerController != null
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
+                                  child: BetterPlayer(
+                                    key: _betterPlayerKey,
+                                    controller: _betterPlayerController!,
+                                  ),
+                                )
+                              : Container(
+                                  color: Colors.black,
+                                  child: const Center(
+                                    child: Text('No video loaded', style: TextStyle(color: Colors.white60)),
+                                  ),
+                                ),
             ),
 
             // Floating Chat Bubble Toast Overlay

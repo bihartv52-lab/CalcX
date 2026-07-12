@@ -885,8 +885,8 @@ class _AuroraBackgroundPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..style = PaintingStyle.fill;
 
-    // Purple blob
-    paint.color = const Color(0xFF7C3AED).withValues(alpha: 0.12);
+    // Electric Blue blob
+    paint.color = const Color(0xFF2979FF).withValues(alpha: 0.12);
     canvas.drawCircle(
       Offset(
         size.width * 0.2 + sin(animationValue * 2 * pi) * 30,
@@ -896,8 +896,8 @@ class _AuroraBackgroundPainter extends CustomPainter {
       paint..maskFilter = const MaskFilter.blur(BlurStyle.normal, 80),
     );
 
-    // Pink blob
-    paint.color = const Color(0xFFEC4899).withValues(alpha: 0.08);
+    // Dash Orange blob
+    paint.color = const Color(0xFFFF9100).withValues(alpha: 0.08);
     canvas.drawCircle(
       Offset(
         size.width * 0.8 + cos(animationValue * 2 * pi + 1) * 25,
@@ -907,8 +907,8 @@ class _AuroraBackgroundPainter extends CustomPainter {
       paint..maskFilter = const MaskFilter.blur(BlurStyle.normal, 90),
     );
 
-    // Cyan accent
-    paint.color = const Color(0xFF00DBE9).withValues(alpha: 0.05);
+    // Electric Cyan accent
+    paint.color = const Color(0xFF00E5FF).withValues(alpha: 0.05);
     canvas.drawCircle(
       Offset(
         size.width * 0.5 + sin(animationValue * 2 * pi + 2) * 40,

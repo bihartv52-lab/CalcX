@@ -4,6 +4,8 @@ import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/features/rooms/presentation/widgets/room_chat_sidebar.dart';
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:calcx/core/widgets/web_iframe_widget.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:calcx/features/rooms/presentation/widgets/ludo_game_widget.dart';
@@ -967,39 +969,45 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
         ),
         const Divider(height: 1, color: Colors.white12),
         Expanded(
-          child: InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri(_lobbyUrlController.text.isNotEmpty
-                ? _lobbyUrlController.text
-                : (_activeGameType == 'ludo'
-                    ? 'https://www.gamezop.com/g/SkhljT2fdgb'
-                    : 'https://skribbl.io/'))),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              domStorageEnabled: true,
-              databaseEnabled: true,
-              allowsInlineMediaPlayback: true,
-              useHybridComposition: true,
-              mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-              mediaPlaybackRequiresUserGesture: false,
-            ),
-            onWebViewCreated: (controller) {
-              _webViewController = controller;
-            },
-            onLoadStop: (controller, url) async {
-              if (url != null) {
-                final urlStr = url.toString();
-                if (urlStr.contains('?room=') || 
-                    urlStr.contains('&room=') || 
-                    urlStr.contains('skribbl.io/?') ||
-                    urlStr.contains('gamezop.com/')) {
-                  if (urlStr != _lobbyUrlController.text) {
-                    _lobbyUrlController.text = urlStr;
-                    _syncWebLobby();
-                  }
-                }
-              }
-            },
-          ),
+          child: kIsWeb
+              ? createIFrameWidget(_lobbyUrlController.text.isNotEmpty
+                  ? _lobbyUrlController.text
+                  : (_activeGameType == 'ludo'
+                      ? 'https://www.gamezop.com/g/SkhljT2fdgb'
+                      : 'https://skribbl.io/'))
+              : InAppWebView(
+                  initialUrlRequest: URLRequest(url: WebUri(_lobbyUrlController.text.isNotEmpty
+                      ? _lobbyUrlController.text
+                      : (_activeGameType == 'ludo'
+                          ? 'https://www.gamezop.com/g/SkhljT2fdgb'
+                          : 'https://skribbl.io/'))),
+                  initialSettings: InAppWebViewSettings(
+                    javaScriptEnabled: true,
+                    domStorageEnabled: true,
+                    databaseEnabled: true,
+                    allowsInlineMediaPlayback: true,
+                    useHybridComposition: true,
+                    mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
+                    mediaPlaybackRequiresUserGesture: false,
+                  ),
+                  onWebViewCreated: (controller) {
+                    _webViewController = controller;
+                  },
+                  onLoadStop: (controller, url) async {
+                    if (url != null) {
+                      final urlStr = url.toString();
+                      if (urlStr.contains('?room=') || 
+                          urlStr.contains('&room=') || 
+                          urlStr.contains('skribbl.io/?') ||
+                          urlStr.contains('gamezop.com/')) {
+                        if (urlStr != _lobbyUrlController.text) {
+                          _lobbyUrlController.text = urlStr;
+                          _syncWebLobby();
+                        }
+                      }
+                    }
+                  },
+                ),
         ),
       ],
     );

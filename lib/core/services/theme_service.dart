@@ -16,7 +16,7 @@ class ThemeSettings {
   final int? seedColorValue; // Color seed extracted
 
   ThemeSettings({
-    this.themeName = 'sunset',
+    this.themeName = 'midnight_dash',
     this.globalWallpaperPath,
     this.chatWallpapers = const {},
     this.wallpaperOpacity = 0.8,
@@ -59,7 +59,7 @@ class ThemeSettings {
 
   factory ThemeSettings.fromMap(Map<String, dynamic> map) {
     return ThemeSettings(
-      themeName: map['themeName'] ?? 'sunset',
+      themeName: map['themeName'] ?? 'midnight_dash',
       globalWallpaperPath: map['globalWallpaperPath'],
       chatWallpapers: Map<String, String>.from(map['chatWallpapers'] ?? {}),
       wallpaperOpacity: (map['wallpaperOpacity'] as num?)?.toDouble() ?? 0.8,
