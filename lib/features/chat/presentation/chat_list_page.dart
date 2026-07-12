@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:calcx/features/friends/presentation/friends_page.dart';
+import 'package:calcx/features/friends/presentation/user_search_page.dart';
 
 final recentChatsProvider = FutureProvider<List<Map<String, dynamic>>>((
   ref,
@@ -60,9 +61,20 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
           const SizedBox(height: 18),
           TextField(
             decoration: InputDecoration(
-              hintText: 'Search',
+              hintText: 'Search chats or usernames...',
               prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: configured ? const Icon(Icons.bolt_rounded) : null,
+              suffixIcon: IconButton(
+                icon: const Icon(Icons.person_search_rounded, color: Colors.blueAccent),
+                tooltip: 'Search users to chat',
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserSearchPage(initialQuery: _searchQuery.trim()),
+                    ),
+                  );
+                },
+              ),
             ),
             onChanged: (value) {
               setState(() {
@@ -71,6 +83,47 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
             },
           ),
           const SizedBox(height: 18),
+          if (_searchQuery.trim().isNotEmpty) ...[
+            GlassCard(
+              margin: const EdgeInsets.only(bottom: 16),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => UserSearchPage(initialQuery: _searchQuery.trim()),
+                  ),
+                );
+              },
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                    child: const Icon(Icons.person_search_rounded, color: Colors.blueAccent),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Search all users for "${_searchQuery.trim()}"',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Tap to find anyone by username & start chat',
+                          style: TextStyle(fontSize: 12, color: Colors.white60),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: Colors.white54),
+                ],
+              ),
+            ),
+          ],
+          const _ActiveFriendsBar(),
+          const SizedBox(height: 12),
           if (!configured)
             const Center(
               child: Padding(
@@ -97,26 +150,47 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
             chatsAsync.when(
               data: (chats) {
                 if (chats.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Padding(
-                      padding: EdgeInsets.all(32.0),
+                      padding: const EdgeInsets.all(32.0),
                       child: Column(
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.chat_bubble_outline,
                             size: 64,
                             color: Colors.grey,
                           ),
-                          SizedBox(height: 16),
-                          Text(
+                          const SizedBox(height: 16),
+                          const Text(
                             'No chats yet',
                             style: TextStyle(fontSize: 18, color: Colors.grey),
                           ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Start a conversation with your friends!',
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Start a conversation with anyone by username!',
                             style: TextStyle(color: Colors.grey),
                             textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 20),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const UserSearchPage(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.person_search_rounded),
+                            label: const Text('Search Users to Chat'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -423,6 +497,106 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ActiveFriendsBar extends ConsumerWidget {
+  const _ActiveFriendsBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final friendsAsync = ref.watch(friendsListProvider);
+
+    return friendsAsync.when(
+      data: (friends) {
+        if (friends.isEmpty) return const SizedBox.shrink();
+        
+        return Container(
+          height: 96,
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  'Active Friends',
+                  style: TextStyle(
+                    fontSize: 11, 
+                    fontWeight: FontWeight.bold, 
+                    color: Colors.white54, 
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: friends.length,
+                  itemBuilder: (context, index) {
+                    final friend = friends[index];
+                    return GestureDetector(
+                      onTap: () => context.push('/chat/${friend.id}'),
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 16),
+                        child: Column(
+                          children: [
+                            Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 22,
+                                  backgroundImage: friend.avatarUrl != null
+                                      ? NetworkImage(friend.avatarUrl!)
+                                      : null,
+                                  child: friend.avatarUrl == null
+                                      ? Text(friend.displayName.isNotEmpty
+                                          ? friend.displayName[0].toUpperCase()
+                                          : '?')
+                                      : null,
+                                ),
+                                if (friend.isOnline)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 11,
+                                      height: 11,
+                                      decoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: const Color(0xFF050505), width: 1.5),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            SizedBox(
+                              width: 52,
+                              child: Text(
+                                friend.displayName.split(' ')[0],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 10, color: Colors.white70),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

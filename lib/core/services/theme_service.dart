@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:calcx/core/services/secure_storage_service.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:calcx/core/utils/platform_file_helper.dart' as pf;
+import 'package:image_picker/image_picker.dart';
 
 class ThemeSettings {
   final String themeName; // 'cyberpunk', 'emerald', 'sunset', 'crimson', 'light', 'amoled', 'material_you', 'gallery'
@@ -128,11 +128,11 @@ class ThemeServiceNotifier extends Notifier<ThemeSettings> {
   }
 
   /// Saves a wallpaper file locally and sets it globally
-  Future<void> setGlobalWallpaper(File originalFile) async {
+  Future<void> setGlobalWallpaper(XFile originalFile) async {
     try {
-      final savedFile = await _saveFileLocally(originalFile, 'global_wallpaper.png');
+      final savedPath = await pf.saveWallpaperLocally(originalFile, 'global_wallpaper.png');
       state = state.copyWith(
-        globalWallpaperPath: savedFile.path,
+        globalWallpaperPath: savedPath,
         themeName: 'gallery',
       );
       await _saveSettings();
@@ -140,11 +140,11 @@ class ThemeServiceNotifier extends Notifier<ThemeSettings> {
   }
 
   /// Saves a wallpaper file locally and sets it for a specific chat
-  Future<void> setChatWallpaper(String chatId, File originalFile) async {
+  Future<void> setChatWallpaper(String chatId, XFile originalFile) async {
     try {
-      final savedFile = await _saveFileLocally(originalFile, 'chat_$chatId.png');
+      final savedPath = await pf.saveWallpaperLocally(originalFile, 'chat_$chatId.png');
       final updatedChats = Map<String, String>.from(state.chatWallpapers);
-      updatedChats[chatId] = savedFile.path;
+      updatedChats[chatId] = savedPath;
       state = state.copyWith(chatWallpapers: updatedChats);
       await _saveSettings();
     } catch (_) {}
@@ -168,39 +168,22 @@ class ThemeServiceNotifier extends Notifier<ThemeSettings> {
     await _saveSettings();
   }
 
-  /// Helper to copy files to application document directory
-  Future<File> _saveFileLocally(File file, String fileName) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final wallpaperDir = Directory('${appDir.path}/wallpapers');
-    if (!await wallpaperDir.exists()) {
-      await wallpaperDir.create(recursive: true);
-    }
-    return await file.copy('${wallpaperDir.path}/$fileName');
-  }
-
   /// Local Backup of Theme Configuration
   Future<String> exportBackup() async {
-    final appDir = await getApplicationDocumentsDirectory();
     final data = {
       'settings': state.toMap(),
       'backup_date': DateTime.now().toIso8601String(),
     };
-    final backupFile = File('${appDir.path}/theme_backup.json');
-    await backupFile.writeAsString(json.encode(data));
-    return backupFile.path;
+    return await pf.exportThemeBackup(data);
   }
 
   /// Restore from Backup File
   Future<void> importBackup(String path) async {
     try {
-      final file = File(path);
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final data = json.decode(content);
-        if (data['settings'] != null) {
-          state = ThemeSettings.fromMap(data['settings']);
-          await _saveSettings();
-        }
+      final data = await pf.importThemeBackup(path);
+      if (data != null && data['settings'] != null) {
+        state = ThemeSettings.fromMap(data['settings']);
+        await _saveSettings();
       }
     } catch (e) {
       throw Exception('Failed to restore backup: $e');

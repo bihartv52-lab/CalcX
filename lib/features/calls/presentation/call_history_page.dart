@@ -216,7 +216,7 @@ class _CallHistoryTile extends ConsumerWidget {
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error initiating call: $e')),
+                      SnackBar(content: const Text('Could not start the call. Please try again.')),
                     );
                   }
                 }

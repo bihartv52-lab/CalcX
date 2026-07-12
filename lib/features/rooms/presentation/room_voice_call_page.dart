@@ -112,7 +112,7 @@ class _RoomVoiceCallPageState extends ConsumerState<RoomVoiceCallPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to join voice call: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not join voice call. Please check your connection.')));
       }
     }
   }

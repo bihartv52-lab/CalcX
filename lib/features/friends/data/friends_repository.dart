@@ -32,7 +32,11 @@ class FriendsRepository {
 
   /// Search users by username or email
   Future<List<UserProfile>> searchUsers(String query) async {
-    if (_supabase == null || query.trim().isEmpty) {
+    if (_supabase == null) {
+      throw Exception('Supabase is not initialized. Check your app.env file or network connection.');
+    }
+    final sanitized = query.trim().replaceAll(RegExp(r'[,()%\\]'), '');
+    if (sanitized.isEmpty) {
       return [];
     }
 
@@ -40,7 +44,7 @@ class FriendsRepository {
       final response = await _supabase
           .from('profiles')
           .select()
-          .or('username.ilike.%$query%,display_name.ilike.%$query%')
+          .or('username.ilike.%$sanitized%,display_name.ilike.%$sanitized%')
           .limit(20);
 
       return (response as List)
@@ -48,7 +52,7 @@ class FriendsRepository {
           .toList();
     } catch (e) {
       debugPrint('Error searching users: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -241,7 +245,7 @@ class FriendsRepository {
           .toList();
     } catch (e) {
       debugPrint('Error getting friends: $e');
-      return [];
+      rethrow;
     }
   }
 
@@ -263,7 +267,7 @@ class FriendsRepository {
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error getting pending requests: $e');
-      return [];
+      rethrow;
     }
   }
 

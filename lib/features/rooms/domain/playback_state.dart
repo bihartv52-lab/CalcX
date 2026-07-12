@@ -7,6 +7,9 @@ class PlaybackStateSnapshot {
     this.hostId,
     this.playbackSpeed = 1.0,
     this.sourceType,
+    this.trackTitle,
+    this.trackArtist,
+    this.trackThumbnail,
   });
 
   factory PlaybackStateSnapshot.fromMap(Map<String, dynamic> map) {
@@ -19,6 +22,9 @@ class PlaybackStateSnapshot {
       hostId: map['host_id'] as String?,
       playbackSpeed: (map['playback_speed'] as num?)?.toDouble() ?? 1.0,
       sourceType: map['source_type'] as String?,
+      trackTitle: map['track_title'] as String?,
+      trackArtist: map['track_artist'] as String?,
+      trackThumbnail: map['track_thumbnail'] as String?,
     );
   }
 
@@ -29,12 +35,14 @@ class PlaybackStateSnapshot {
   final String? hostId;
   final double playbackSpeed;
   final String? sourceType;
+  final String? trackTitle;
+  final String? trackArtist;
+  final String? trackThumbnail;
 
   Duration get estimatedLivePosition {
     if (!isPlaying) {
       return position;
     }
-    // Adjust estimated live position by playback speed
     final elapsed = DateTime.now().toUtc().difference(updatedAt);
     return position + Duration(milliseconds: (elapsed.inMilliseconds * playbackSpeed).toInt());
   }
@@ -48,6 +56,9 @@ class PlaybackStateSnapshot {
       'host_id': hostId,
       'playback_speed': playbackSpeed,
       'source_type': sourceType,
+      'track_title': trackTitle,
+      'track_artist': trackArtist,
+      'track_thumbnail': trackThumbnail,
     };
   }
 }

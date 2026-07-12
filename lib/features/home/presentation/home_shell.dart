@@ -17,6 +17,15 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 
+class HomeTabIndexNotifier extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void setTab(int val) => state = val;
+}
+
+final homeTabIndexProvider = NotifierProvider<HomeTabIndexNotifier, int>(HomeTabIndexNotifier.new);
+
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -25,7 +34,6 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
-  int _index = 0;
 
   @override
   void initState() {
@@ -71,9 +79,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   void _showUpdatePopup(String downloadUrl) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Prevent dismissing
-      builder: (context) => WillPopScope(
-        onWillPop: () async => false, // Prevent backing out
+      barrierDismissible: true, // Allow dismissing by tapping outside
+      builder: (context) => PopScope(
+        canPop: true, // Allow dismissing via back gesture
         child: AlertDialog(
           backgroundColor: const Color(0xFF1E1E1E),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -100,6 +108,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             ],
           ),
           actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Later', style: TextStyle(color: Colors.white54)),
+            ),
             TextButton(
               onPressed: () async {
                 final uri = Uri.parse(downloadUrl);
@@ -131,6 +143,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final index = ref.watch(homeTabIndexProvider);
     final pendingRequestsAsync = ref.watch(pendingRequestsProvider);
     final pendingCount = pendingRequestsAsync.maybeWhen(
       data: (list) => list.length,
@@ -176,9 +189,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           bottomNavigationBar: wide
               ? null
               : NavigationBar(
-                  selectedIndex: _index,
+                  selectedIndex: index,
                   destinations: destinations,
-                  onDestinationSelected: (value) => setState(() => _index = value),
+                  onDestinationSelected: (value) => ref.read(homeTabIndexProvider.notifier).setTab(value),
                 ),
           floatingActionButton: wide
               ? null
@@ -187,26 +200,30 @@ class _HomeShellState extends ConsumerState<HomeShell> {
                   onPressed: () => _openSearch(context),
                   child: const Icon(Icons.person_search_rounded),
                 ),
-          child: Row(
+          child: Stack(
             children: [
-              if (wide)
-                _SideRail(
-                  index: _index,
-                  onChanged: (value) => setState(() => _index = value),
-                  pendingCount: pendingCount,
-                ),
-              Expanded(
-                child: Column(
-                  children: [
-                    if (wide) const _TopBar(),
-                    Expanded(
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 220),
-                        child: _pages[_index],
-                      ),
+              Row(
+                children: [
+                  if (wide)
+                    _SideRail(
+                      index: index,
+                      onChanged: (value) => ref.read(homeTabIndexProvider.notifier).setTab(value),
+                      pendingCount: pendingCount,
                     ),
-                  ],
-                ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        if (wide) const _TopBar(),
+                        Expanded(
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            child: _pages[index],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -272,7 +289,7 @@ class _TopBar extends ConsumerWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: $e')),
+                          SnackBar(content: const Text('Something went wrong. Please try again.')),
                         );
                       }
                     }
@@ -286,7 +303,7 @@ class _TopBar extends ConsumerWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: const Text('Something went wrong. Please try again.')),
         );
       }
     }

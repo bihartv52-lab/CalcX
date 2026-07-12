@@ -1,12 +1,13 @@
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
 import 'package:calcx/features/rooms/presentation/room_chat_page.dart';
-import 'package:calcx/features/rooms/presentation/room_music_sync_page.dart';
 import 'package:calcx/features/rooms/presentation/room_voice_call_page.dart';
 import 'package:calcx/features/rooms/presentation/room_watch_party_page.dart';
 import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:calcx/features/chat/data/chat_repository.dart';
+import 'package:calcx/features/friends/presentation/friends_page.dart';
 
 class RoomDetailPage extends ConsumerStatefulWidget {
   const RoomDetailPage({super.key, required this.roomId});
@@ -61,7 +62,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error joining room: $e')),
+          SnackBar(content: const Text('Could not join room. Please try again.')),
         );
       }
     } finally {
@@ -88,7 +89,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error leaving room: $e')),
+          SnackBar(content: const Text('Could not leave room. Please try again.')),
         );
       }
     } finally {
@@ -104,12 +105,30 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
       appBar: AppBar(
         title: const Text('Room'),
         actions: [
-          if (_isJoined)
+          if (_isJoined) ...[
+            FutureBuilder<Map<String, dynamic>>(
+              future: _roomDetailsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.hasData) {
+                  final room = snapshot.data!;
+                  final roomName = room['name'] as String;
+                  return IconButton(
+                    icon: const Icon(Icons.share_rounded),
+                    tooltip: 'Share Room',
+                    onPressed: () {
+                      _showShareRoomSheet(context, widget.roomId, roomName);
+                    },
+                  );
+                }
+                return const SizedBox.shrink();
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.exit_to_app_rounded),
               tooltip: 'Leave Room',
               onPressed: _isLoading ? null : _leaveRoom,
             ),
+          ],
         ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
@@ -243,22 +262,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
                           },
                         ),
                       ] else ...[
-                        _FeatureTile(
-                          icon: Icons.music_note_rounded,
-                          title: 'Sync Music',
-                          subtitle: 'Listen to music together in sync',
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => RoomMusicSyncPage(
-                                  roomId: widget.roomId,
-                                  roomName: roomName,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const Divider(height: 24),
+
                         _FeatureTile(
                           icon: Icons.movie_rounded,
                           title: 'Watch Party',
@@ -396,6 +400,120 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
           );
         },
       ),
+    );
+  }
+
+  void _showShareRoomSheet(BuildContext context, String roomId, String roomName) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0F0F19),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return Consumer(
+          builder: (context, ref, child) {
+            final friendsAsync = ref.watch(friendsListProvider);
+
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 48,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(100),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Share "$roomName"',
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  const Text('Select a friend to send this room invite', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                  const SizedBox(height: 16),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 280),
+                    child: friendsAsync.when(
+                      data: (friends) {
+                        if (friends.isEmpty) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(24.0),
+                              child: Text('No friends found to share with.', style: TextStyle(color: Colors.grey)),
+                            ),
+                          );
+                        }
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: friends.length,
+                          itemBuilder: (context, index) {
+                            final friend = friends[index];
+                            return ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage: friend.avatarUrl != null ? NetworkImage(friend.avatarUrl!) : null,
+                                child: friend.avatarUrl == null ? Text(friend.displayName.isNotEmpty ? friend.displayName[0].toUpperCase() : '?') : null,
+                              ),
+                              title: Text(friend.displayName, style: const TextStyle(color: Colors.white)),
+                              subtitle: Text('@${friend.username}', style: const TextStyle(color: Colors.white30, fontSize: 11)),
+                              trailing: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF7C3AED),
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                ),
+                                onPressed: () async {
+                                  try {
+                                    final chatRepo = ref.read(chatRepositoryProvider);
+                                    await chatRepo.sendMediaMessage(
+                                      receiverId: friend.id,
+                                      messageType: 'share_room',
+                                      mediaUrl: roomId,
+                                      content: roomName,
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Room invite shared with ${friend.displayName}! 👥'),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: const Text('Could not share. Please try again.')),
+                                      );
+                                    }
+                                  }
+                                },
+                                child: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (err, _) => Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }

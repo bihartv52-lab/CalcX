@@ -394,7 +394,7 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
                         } catch (e) {
                           if (rootContext.mounted) {
                             ScaffoldMessenger.of(rootContext).showSnackBar(
-                              SnackBar(content: Text('Error joining room: $e')),
+                              SnackBar(content: const Text('Could not join the room. Please check your connection and try again.')),
                             );
                           }
                         }
@@ -671,7 +671,7 @@ class _OngoingCallTopBannerState extends ConsumerState<_OngoingCallTopBanner> {
                               size: 18,
                             ),
                             onPressed: () {
-                              _showSoundControlSheet(context, ref);
+                              showSoundControlSheet(context, ref);
                             },
                           ),
                           IconButton(
@@ -897,7 +897,7 @@ class _DraggableCallOverlayState extends ConsumerState<_DraggableCallOverlay> {
                         // Sound Settings (Tune)
                         GestureDetector(
                           onTap: () {
-                            _showSoundControlSheet(context, ref);
+                            showSoundControlSheet(context, ref);
                           },
                           child: const Icon(
                             Icons.tune_rounded,
@@ -1000,7 +1000,7 @@ class _PulsingIndicatorState extends State<_PulsingIndicator> with SingleTickerP
   }
 }
 
-void _showSoundControlSheet(BuildContext context, WidgetRef ref) {
+void showSoundControlSheet(BuildContext context, WidgetRef ref) {
   showModalBottomSheet(
     context: context,
     backgroundColor: const Color(0xFF1E1E1E),

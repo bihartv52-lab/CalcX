@@ -7,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 class UserSearchPage extends ConsumerStatefulWidget {
-  const UserSearchPage({super.key});
+  const UserSearchPage({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   ConsumerState<UserSearchPage> createState() => _UserSearchPageState();
@@ -29,6 +31,11 @@ class _UserSearchPageState extends ConsumerState<UserSearchPage> {
   void initState() {
     super.initState();
     _loadRelations();
+    if (widget.initialQuery != null && widget.initialQuery!.trim().isNotEmpty) {
+      final query = widget.initialQuery!.trim();
+      _searchController.text = query;
+      _searchUsers(query);
+    }
   }
 
   Future<void> _loadRelations() async {
@@ -91,7 +98,10 @@ class _UserSearchPageState extends ConsumerState<UserSearchPage> {
       if (mounted) {
         setState(() => _isSearching = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error searching: $e')),
+          SnackBar(
+            content: Text('Search failed: $e'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -116,7 +126,7 @@ class _UserSearchPageState extends ConsumerState<UserSearchPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: const Text('Something went wrong. Please try again.')),
         );
       }
     }
@@ -135,7 +145,7 @@ class _UserSearchPageState extends ConsumerState<UserSearchPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: const Text('Something went wrong. Please try again.')),
         );
       }
     }
@@ -254,52 +264,47 @@ class _UserSearchPageState extends ConsumerState<UserSearchPage> {
                       padding: EdgeInsets.symmetric(horizontal: 8.0),
                       child: Text('(You)', style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic)),
                     );
-                  } else if (isAlreadyFriend) {
+                  } else {
                     trailingWidget = Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text('Friend', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 4),
                         IconButton(
                           icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.blue),
+                          tooltip: 'Chat with user',
                           onPressed: () {
                             // Close search and go to chat
                             Navigator.pop(context);
-                            // We use the route scheme `/chat/:id`
                             context.push('/chat/${user.id}');
                           },
                         ),
+                        if (isAlreadyFriend)
+                          const Text('Friend', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
+                        else if (hasReceivedRequest)
+                          IconButton(
+                            icon: const Icon(Icons.check_circle_rounded, color: Colors.green),
+                            tooltip: 'Accept request',
+                            onPressed: () => _acceptFriendRequest(receivedRequest['id']),
+                          )
+                        else if (requestSent)
+                          const Text('Requested', style: TextStyle(color: Colors.orange))
+                        else
+                          IconButton(
+                            icon: const Icon(Icons.person_add_rounded),
+                            color: Theme.of(context).colorScheme.primary,
+                            tooltip: 'Send friend request',
+                            onPressed: () => _sendFriendRequest(user.id),
+                          ),
                       ],
-                    );
-                  } else if (hasReceivedRequest) {
-                    trailingWidget = ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                      onPressed: () => _acceptFriendRequest(receivedRequest['id']),
-                      icon: const Icon(Icons.check, size: 16),
-                      label: const Text('Accept'),
-                    );
-                  } else if (requestSent) {
-                    trailingWidget = const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.access_time_rounded, color: Colors.orange, size: 16),
-                          SizedBox(width: 4),
-                          Text('Requested', style: TextStyle(color: Colors.orange)),
-                        ],
-                      ),
-                    );
-                  } else {
-                    trailingWidget = IconButton(
-                      icon: const Icon(Icons.person_add_rounded),
-                      color: Theme.of(context).colorScheme.primary,
-                      tooltip: 'Send friend request',
-                      onPressed: () => _sendFriendRequest(user.id),
                     );
                   }
 
                   return ListTile(
+                    onTap: isMe
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            context.push('/chat/${user.id}');
+                          },
                     leading: CircleAvatar(
                       backgroundImage: user.avatarUrl != null
                           ? NetworkImage(user.avatarUrl!)

@@ -7,6 +7,7 @@ import 'package:calcx/features/calls/presentation/active_call_page.dart';
 import 'package:calcx/features/calls/presentation/incoming_call_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:calcx/core/services/supabase_service.dart';
 
 class CallsPage extends ConsumerStatefulWidget {
   const CallsPage({super.key});
@@ -94,9 +95,32 @@ class _CallsPageState extends ConsumerState<CallsPage> {
           const SizedBox(height: 18),
           
           // Show real call history
-          FutureBuilder<List<Call>>(
-            future: _callHistoryFuture,
-            builder: (context, snapshot) {
+          if (SupabaseService.clientOrNull == null)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Column(
+                  children: [
+                    Icon(Icons.cloud_off_rounded, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Supabase not configured',
+                      style: TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Realtime voice and video calling require a connected database.',
+                      style: TextStyle(color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            FutureBuilder<List<Call>>(
+              future: _callHistoryFuture,
+              builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(
                   child: Padding(
@@ -207,7 +231,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error: $e')),
+                                  SnackBar(content: const Text('Something went wrong. Please try again.')),
                                 );
                               }
                             }
@@ -234,7 +258,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                             } catch (e) {
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Error: $e')),
+                                  SnackBar(content: const Text('Something went wrong. Please try again.')),
                                 );
                               }
                             }

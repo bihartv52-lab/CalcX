@@ -54,7 +54,7 @@ class AuthRepository {
           final profile = await supabase
               .from('profiles')
               .select('email')
-              .eq('username', emailToUse)
+              .ilike('username', emailToUse)
               .maybeSingle();
           if (profile != null && profile['email'] != null) {
             emailToUse = profile['email'] as String;
@@ -82,7 +82,7 @@ class AuthRepository {
         if (msg.contains('email not confirmed') || msg.contains('confirmation')) {
           throw AuthException(
             '${ae.message}\n\n💡 Developer Tip: Please confirm your email, or disable "Confirm email" in your Supabase Dashboard (under Authentication -> Providers -> Email) to allow instant login.',
-            status: ae.status,
+            statusCode: ae.statusCode,
           );
         }
         rethrow;
@@ -92,19 +92,25 @@ class AuthRepository {
 
     // Local sign-in
     final storedEmail = await _storage.read(key: _localEmailKey);
+    final storedUsername = await _storage.read(key: _localUsernameKey);
     final storedHash = await _storage.read(key: _localPasswordHashKey);
 
     if (storedEmail == null || storedHash == null) {
       throw Exception('No account found. Please sign up first.');
     }
 
-    if (email != storedEmail) {
-      throw Exception('Invalid email or password.');
+    // Input could be email or username
+    final input = email.trim().toLowerCase();
+    final matchEmail = input == storedEmail.trim().toLowerCase();
+    final matchUsername = storedUsername != null && input == storedUsername.trim().toLowerCase();
+
+    if (!matchEmail && !matchUsername) {
+      throw Exception('Invalid email, username, or password.');
     }
 
     final inputHash = _hashPassword(password);
     if (inputHash != storedHash) {
-      throw Exception('Invalid email or password.');
+      throw Exception('Invalid email, username, or password.');
     }
 
     await _storage.write(key: _localUserKey, value: 'true');
