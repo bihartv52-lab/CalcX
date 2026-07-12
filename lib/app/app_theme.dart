@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:calcx/core/services/theme_service.dart';
 
 class AppTheme {
-  static ThemeData dark() => themeForSettings(ThemeSettings(themeName: 'midnight_dash'));
+  static ThemeData dark() => themeForSettings(ThemeSettings(themeName: 'cyberpunk'));
 
   static ThemeData themeForName(String name) => themeForSettings(ThemeSettings(themeName: name));
 
@@ -10,11 +10,11 @@ class AppTheme {
     final name = settings.themeName;
     Brightness brightness = Brightness.dark;
 
-    Color primary = const Color(0xFF00E5FF); // Electric Cyan
-    Color secondary = const Color(0xFF2979FF); // Electric Blue
-    Color tertiary = const Color(0xFFFF9100); // Dash Orange
-    Color background = const Color(0xFF080B11); // Deep Midnight Blue
-    Color surface = const Color(0xFF121824); // Dark Midnight Surface
+    Color primary = const Color(0xFF00DBE9); // cyan
+    Color secondary = const Color(0xFFB600F8); // magenta
+    Color tertiary = const Color(0xFFD1BCFF); // violet
+    Color background = const Color(0xFF050505);
+    Color surface = const Color(0xFF131313);
 
     if (name == 'light') {
       brightness = Brightness.light;
@@ -24,17 +24,11 @@ class AppTheme {
       background = const Color(0xFFF6F5FA);
       surface = const Color(0xFFFFFFFF);
     } else if (name == 'amoled') {
-      primary = const Color(0xFF00E5FF);
-      secondary = const Color(0xFF2979FF);
-      tertiary = const Color(0xFFFF9100);
+      primary = const Color(0xFF00DBE9);
+      secondary = const Color(0xFFB600F8);
+      tertiary = const Color(0xFFD1BCFF);
       background = const Color(0xFF000000); // Pure Black
       surface = const Color(0xFF0A0A0A);
-    } else if (name == 'midnight_dash' || name == 'cyberpunk') {
-      primary = const Color(0xFF00E5FF); // Electric Cyan
-      secondary = const Color(0xFF2979FF); // Electric Blue
-      tertiary = const Color(0xFFFF9100); // Dash Orange
-      background = const Color(0xFF080B11); // Deep Midnight Blue
-      surface = const Color(0xFF121824); // Dark Midnight Surface
     } else if (name == 'emerald') {
       primary = const Color(0xFF00E676);
       secondary = const Color(0xFF00B0FF);
