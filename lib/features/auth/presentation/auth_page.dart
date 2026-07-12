@@ -386,6 +386,7 @@ class _AuthPageState extends ConsumerState<AuthPage>
             label: _signup ? 'Email' : 'Email or Username',
             icon: Icons.alternate_email_rounded,
             keyboardType: _signup ? TextInputType.emailAddress : TextInputType.text,
+            onChanged: (_) => ref.read(authControllerProvider.notifier).resetState(),
           ),
 
           // Username (signup only)
@@ -401,6 +402,7 @@ class _AuthPageState extends ConsumerState<AuthPage>
                         label: 'Username',
                         icon: Icons.face_rounded,
                         focusNode: _usernameFocusNode,
+                        onChanged: (_) => ref.read(authControllerProvider.notifier).resetState(),
                       ),
                     ],
                   )
@@ -415,6 +417,7 @@ class _AuthPageState extends ConsumerState<AuthPage>
             label: 'Password',
             icon: Icons.lock_outline_rounded,
             obscureText: !_showPassword,
+            onChanged: (_) => ref.read(authControllerProvider.notifier).resetState(),
             suffixIcon: IconButton(
               icon: Icon(
                 _showPassword
@@ -739,6 +742,7 @@ class _NeonTextField extends StatelessWidget {
     this.keyboardType,
     this.suffixIcon,
     this.focusNode,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -748,6 +752,7 @@ class _NeonTextField extends StatelessWidget {
   final TextInputType? keyboardType;
   final Widget? suffixIcon;
   final FocusNode? focusNode;
+  final void Function(String)? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -756,6 +761,7 @@ class _NeonTextField extends StatelessWidget {
       focusNode: focusNode,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      onChanged: onChanged,
       style: const TextStyle(fontSize: 15, color: Colors.white),
       cursorColor: const Color(0xFF7C3AED),
       decoration: InputDecoration(

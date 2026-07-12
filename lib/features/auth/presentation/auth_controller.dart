@@ -9,6 +9,10 @@ class AuthController extends AsyncNotifier<void> {
    @override
    Future<void> build() async {}
 
+   void resetState() {
+     state = const AsyncData(null);
+   }
+
    Future<void> signIn({
      required String email,
      required String password,
