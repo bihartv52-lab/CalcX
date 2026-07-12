@@ -1,9 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+
+ImageProvider getWallpaperImageProvider(String path) {
+  if (path.startsWith('data:image/')) {
+    final bytes = base64Decode(path.split(',')[1]);
+    return MemoryImage(bytes);
+  }
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return NetworkImage(path);
+  }
+  return FileImage(File(path));
+}
 
 Future<String> saveWallpaperLocally(XFile file, String fileName) async {
   final appDir = await getApplicationDocumentsDirectory();

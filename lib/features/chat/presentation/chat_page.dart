@@ -1287,7 +1287,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     } else {
       return BoxDecoration(
         image: DecorationImage(
-          image: FileImage(File(path)),
+          image: pf.getWallpaperImageProvider(path),
           fit: BoxFit.cover,
         ),
       );

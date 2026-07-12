@@ -1,6 +1,7 @@
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
 import 'package:calcx/features/rooms/presentation/room_detail_page.dart';
+import 'package:calcx/core/services/supabase_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

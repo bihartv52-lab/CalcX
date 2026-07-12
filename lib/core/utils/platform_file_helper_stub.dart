@@ -1,5 +1,10 @@
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
+
+ImageProvider getWallpaperImageProvider(String path) {
+  throw UnsupportedError('Cannot load wallpaper on this platform.');
+}
 
 Future<String> saveWallpaperLocally(XFile file, String fileName) {
   throw UnsupportedError('Cannot save wallpaper on this platform.');

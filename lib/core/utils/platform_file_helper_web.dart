@@ -1,7 +1,16 @@
 import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+
+ImageProvider getWallpaperImageProvider(String path) {
+  if (path.startsWith('data:image/')) {
+    final bytes = base64Decode(path.split(',')[1]);
+    return MemoryImage(bytes);
+  }
+  return NetworkImage(path);
+}
 
 Future<String> saveWallpaperLocally(XFile file, String fileName) async {
   final bytes = await file.readAsBytes();
