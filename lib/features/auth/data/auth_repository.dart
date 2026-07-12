@@ -162,17 +162,8 @@ class AuthRepository {
     if (password.isEmpty) {
       throw Exception('Password is required.');
     }
-    if (password.length < 8) {
-      throw Exception('Password must be at least 8 characters.');
-    }
-    if (!password.contains(RegExp(r'[A-Z]'))) {
-      throw Exception('Password must contain at least one uppercase letter.');
-    }
-    if (!password.contains(RegExp(r'[a-z]'))) {
-      throw Exception('Password must contain at least one lowercase letter.');
-    }
-    if (!password.contains(RegExp(r'[0-9]'))) {
-      throw Exception('Password must contain at least one number.');
+    if (password.length < 6) {
+      throw Exception('Password must be at least 6 characters.');
     }
 
     final supabase = _supabase;
