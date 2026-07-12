@@ -3,7 +3,7 @@ name: Deploy Web Build
 on:
   push:
     branches:
-      - main
+      - source
   workflow_dispatch: # Allows manual trigger
 
 jobs:
