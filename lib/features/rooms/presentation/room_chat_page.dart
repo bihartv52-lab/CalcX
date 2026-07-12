@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:calcx/core/models/message.dart';
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
@@ -8,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 
 class RoomChatPage extends ConsumerStatefulWidget {
   const RoomChatPage({super.key, required this.roomId, required this.roomName});
@@ -80,7 +78,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error sending message: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Message could not be sent. Please try again.')));
       }
     }
   }
@@ -96,7 +94,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> {
 
       final mediaRepo = ref.read(mediaRepositoryProvider);
       final uploadResult = await mediaRepo.uploadMedia(
-        file: File(image.path),
+        file: image,
         fileType: 'image',
       );
 
@@ -124,7 +122,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error sending image: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not send image. Please try again.')));
       }
     }
   }
@@ -140,7 +138,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> {
 
       final mediaRepo = ref.read(mediaRepositoryProvider);
       final uploadResult = await mediaRepo.uploadMedia(
-        file: File(video.path),
+        file: video,
         fileType: 'video',
       );
 
@@ -168,27 +166,23 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error sending video: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not send video. Please try again.')));
       }
     }
   }
 
   Future<void> _sendFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles();
-      if (result == null) return;
-
-      final file = result.files.first;
-      final filePath = file.path;
-      if (filePath == null) return;
+      final mediaRepo = ref.read(mediaRepositoryProvider);
+      final file = await mediaRepo.pickFile();
+      if (file == null) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Uploading file...'), duration: Duration(days: 1)),
       );
 
-      final mediaRepo = ref.read(mediaRepositoryProvider);
       final uploadResult = await mediaRepo.uploadMedia(
-        file: File(filePath),
+        file: file,
         fileType: 'file',
       );
 
@@ -215,7 +209,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error sending file: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not send file. Please try again.')));
       }
     }
   }

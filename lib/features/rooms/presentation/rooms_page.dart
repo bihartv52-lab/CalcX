@@ -85,10 +85,33 @@ class RoomsPage extends ConsumerWidget {
         const SizedBox(height: 18),
         
         // Show real rooms from Supabase
-        StreamBuilder<List<Map<String, dynamic>>>(
-          stream: ref.read(roomRepositoryProvider).watchRoomsByType(activeTab == 0 ? 'party' : 'game'),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+        if (SupabaseService.clientOrNull == null)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(32.0),
+              child: Column(
+                children: [
+                  Icon(Icons.cloud_off_rounded, size: 64, color: Colors.grey),
+                  SizedBox(height: 16),
+                  Text(
+                    'Supabase not configured',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'Realtime watch parties and game zones require a connected database.',
+                    style: TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: ref.read(roomRepositoryProvider).watchRoomsByType(activeTab == 0 ? 'party' : 'game'),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(
                 child: Padding(
                   padding: EdgeInsets.all(32.0),
@@ -283,7 +306,7 @@ class RoomsPage extends ConsumerWidget {
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error creating room: $e')),
+                      SnackBar(content: const Text('Could not create room. Please try again.')),
                     );
                   }
                 }

@@ -1,12 +1,9 @@
-import 'dart:io';
-
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -22,57 +19,60 @@ class MediaRepository {
   static const _uuid = Uuid();
   final _picker = ImagePicker();
 
-  Future<File?> pickImage() async {
+  Future<XFile?> pickImage() async {
     final image = await _picker.pickImage(
       source: ImageSource.gallery,
       maxWidth: 1920,
       maxHeight: 1920,
       imageQuality: 85,
     );
-    return image == null ? null : File(image.path);
+    return image;
   }
 
-  Future<File?> takePhoto() async {
+  Future<XFile?> takePhoto() async {
     final image = await _picker.pickImage(
       source: ImageSource.camera,
       maxWidth: 1920,
       maxHeight: 1920,
       imageQuality: 85,
     );
-    return image == null ? null : File(image.path);
+    return image;
   }
 
-  Future<File?> pickVideo() async {
+  Future<XFile?> pickVideo() async {
     final video = await _picker.pickVideo(
       source: ImageSource.gallery,
       maxDuration: const Duration(minutes: 5),
     );
-    return video == null ? null : File(video.path);
+    return video;
   }
 
-  Future<File?> pickFile() async {
+  Future<XFile?> pickFile() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.any,
       allowMultiple: false,
     );
-    final path = result?.files.firstOrNull?.path;
-    return path == null ? null : File(path);
+    final platformFile = result?.files.firstOrNull;
+    if (platformFile == null) return null;
+
+    if (kIsWeb) {
+      final bytes = platformFile.bytes;
+      if (bytes == null) return null;
+      return XFile.fromData(bytes, name: platformFile.name);
+    } else {
+      final path = platformFile.path;
+      return path == null ? null : XFile(path);
+    }
   }
 
-  Future<File?> generateImageThumbnail(File imageFile) async {
+  Future<Uint8List?> generateImageThumbnail(Uint8List bytes) async {
     try {
-      final bytes = await imageFile.readAsBytes();
       final image = img.decodeImage(bytes);
       if (image == null) return null;
 
       final thumbnail = img.copyResize(image, width: 200);
       final thumbnailBytes = img.encodeJpg(thumbnail, quality: 70);
-      final tempDir = await getTemporaryDirectory();
-      final thumbnailPath = '${tempDir.path}/thumb_${_uuid.v4()}.jpg';
-      final thumbnailFile = File(thumbnailPath);
-      await thumbnailFile.writeAsBytes(thumbnailBytes);
-
-      return thumbnailFile;
+      return Uint8List.fromList(thumbnailBytes);
     } catch (e) {
       debugPrint('Error generating thumbnail: $e');
       return null;
@@ -80,7 +80,7 @@ class MediaRepository {
   }
 
   Future<Map<String, String>> uploadMedia({
-    required File file,
+    required XFile file,
     required String fileType,
     void Function(double progress)? onProgress,
   }) async {
@@ -94,23 +94,25 @@ class MediaRepository {
       throw StateError('User must be logged in to upload media.');
     }
 
-    final length = await file.length();
+    final bytes = await file.readAsBytes();
+    final length = bytes.length;
     if (length > maxUploadBytes) {
       throw StateError('File must be 50MB or smaller.');
     }
+
     onProgress?.call(0);
 
     final id = _uuid.v4();
-    final extension = file.path.split('.').last.toLowerCase();
+    final extension = file.name.split('.').last.toLowerCase();
     final fileName = '$id.$extension';
     final storagePath = '$userId/$fileType/$fileName';
     final mimeType = _mimeTypeFor(fileType, extension);
 
     await supabase.storage
         .from('media')
-        .upload(
+        .uploadBinary(
           storagePath,
-          file,
+          bytes,
           fileOptions: FileOptions(contentType: mimeType, upsert: false),
         );
     onProgress?.call(0.75);
@@ -119,21 +121,20 @@ class MediaRepository {
     String? thumbnailUrl;
 
     if (fileType == 'image') {
-      final thumbnail = await generateImageThumbnail(file);
-      if (thumbnail != null) {
+      final thumbnailBytes = await generateImageThumbnail(bytes);
+      if (thumbnailBytes != null) {
         final thumbPath = '$userId/$fileType/thumb_$fileName';
         await supabase.storage
             .from('media')
-            .upload(
+            .uploadBinary(
               thumbPath,
-              thumbnail,
+              thumbnailBytes,
               fileOptions: const FileOptions(
                 contentType: 'image/jpeg',
                 upsert: false,
               ),
             );
         thumbnailUrl = supabase.storage.from('media').getPublicUrl(thumbPath);
-        await thumbnail.delete();
       }
     }
 

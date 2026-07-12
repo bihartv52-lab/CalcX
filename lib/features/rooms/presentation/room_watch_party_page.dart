@@ -392,30 +392,38 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
 
   void _loadYouTubeVideo(String url) {
-    final videoId = YoutubePlayer.convertUrlToId(url);
-    if (videoId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Invalid YouTube URL')));
-      return;
+    try {
+      final videoId = YoutubePlayer.convertUrlToId(url);
+      if (videoId == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Invalid YouTube URL')));
+        return;
+      }
+
+      _youtubeController?.dispose();
+      _betterPlayerController?.dispose();
+      _betterPlayerController = null;
+
+      _youtubeController = YoutubePlayerController(
+        initialVideoId: videoId,
+        flags: const YoutubePlayerFlags(
+          autoPlay: false,
+          mute: false,
+          enableCaption: true,
+        ),
+      );
+
+      setState(() {
+        _sourceType = 'youtube';
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not load YouTube video: $e')));
+      }
     }
-
-    _youtubeController?.dispose();
-    _betterPlayerController?.dispose();
-    _betterPlayerController = null;
-
-    _youtubeController = YoutubePlayerController(
-      initialVideoId: videoId,
-      flags: const YoutubePlayerFlags(
-        autoPlay: false,
-        mute: false,
-        enableCaption: true,
-      ),
-    );
-
-    setState(() {
-      _sourceType = 'youtube';
-    });
   }
 
   Future<void> _loadBrowserUrl(String url) async {
@@ -443,7 +451,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error loading web page: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not load web page. Check the URL and try again.')));
       }
     }
   }
@@ -479,7 +487,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error loading URL: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not open this link. Please check the URL and try again.')));
       }
     }
   }
@@ -522,7 +530,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error loading file: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Could not load this file. Please try again.')));
       }
     }
   }
@@ -572,7 +580,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       if (mounted && showSnackBar) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error syncing: $e')));
+        ).showSnackBar(SnackBar(content: const Text('Sync failed. Please check your connection.')));
       }
     }
   }
@@ -626,7 +634,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading URL: $e')),
+          SnackBar(content: const Text('Could not open this link. Please check the URL and try again.')),
         );
       }
     } finally {

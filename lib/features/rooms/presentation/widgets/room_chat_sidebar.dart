@@ -122,7 +122,7 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
       if (mounted) {
         setState(() => _isVcConnecting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to join call: $e')),
+          SnackBar(content: const Text('Could not join call. Please try again.')),
         );
       }
     }
@@ -338,7 +338,7 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
                               } catch (e) {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Error sending invite: $e')),
+                                    SnackBar(content: const Text('Could not send invite. Please try again.')),
                                   );
                                 }
                               }

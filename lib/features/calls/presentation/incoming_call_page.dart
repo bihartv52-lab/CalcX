@@ -97,7 +97,7 @@ class _IncomingCallPageState extends ConsumerState<IncomingCallPage>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error accepting call: $e')),
+          SnackBar(content: const Text('Could not accept the call. Please try again.')),
         );
         Navigator.pop(context);
       }

@@ -210,13 +210,13 @@ CREATE TABLE IF NOT EXISTS public.app_config (
   value JSONB NOT NULL
 );
 
--- Seed default version configuration (Local Version Code is 1)
+-- Seed default version configuration (Local Version Code is 1, Set to 2 to trigger updates check on test)
 INSERT INTO public.app_config (key, value)
 VALUES (
   'version_config', 
-  '{"latest_version_code": 1, "latest_version_name": "1.0.0", "download_url": "https://calcx-download.vercel.app"}'::jsonb
+  '{"latest_version_code": 2, "latest_version_name": "1.0.1", "download_url": "https://calcx-download.vercel.app/calcx.apk", "website_url": "https://calcx-website.vercel.app", "whats_new": ["Added real-time room chat support", "Enabled voice calling in party lobbies", "Synchronized YouTube video watch parties", "Fixed case-sensitive login bugs"]}'::jsonb
 )
-ON CONFLICT (key) DO NOTHING;
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 -- Enable RLS for Game & Credit Tables
 ALTER TABLE public.game_sessions ENABLE ROW LEVEL SECURITY;

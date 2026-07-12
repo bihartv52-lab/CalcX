@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui';
 import 'package:calcx/core/models/message.dart';
 import 'package:calcx/core/models/user_profile.dart';
@@ -13,6 +12,7 @@ import 'package:calcx/features/media/data/media_repository.dart';
 import 'package:calcx/core/services/theme_service.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/features/chat/presentation/chat_list_page.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -20,10 +20,11 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:http/http.dart' as http;
+import 'package:calcx/features/rooms/presentation/room_detail_page.dart';
+import 'package:calcx/core/utils/platform_file_helper.dart' as pf;
 
 const Map<String, String> animatedEmojiMap = {
   '❤️': 'https://cdn.jsdelivr.net/gh/Tarikul-Islam-Anik/Telegram-Animated-Emojis@main/Symbols/Red%20Heart.webp',
@@ -260,12 +261,15 @@ class _ChatPageState extends ConsumerState<ChatPage> {
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
-        final tempDir = await getTemporaryDirectory();
-        final path = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        String? path;
+        if (!kIsWeb) {
+          final tempDirPath = await pf.getTempDirectoryPath();
+          path = '$tempDirPath/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        }
 
         await _audioRecorder.start(
           const RecordConfig(encoder: AudioEncoder.aacLc),
-          path: path,
+          path: path ?? '',
         );
 
         setState(() {
@@ -302,10 +306,8 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       });
 
       if (path != null) {
-        final file = File(path);
-        if (await file.exists()) {
-          await _uploadAndSendMedia(file, 'audio', messageType: 'voice');
-        }
+        final xfile = XFile(path);
+        await _uploadAndSendMedia(xfile, 'audio', messageType: 'voice');
       }
     } catch (e) {
       debugPrint('Error stopping recording: $e');
@@ -408,7 +410,10 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Error sending message: $e')));
+        ).showSnackBar(SnackBar(
+          content: Text('Message could not be sent: $e'),
+          backgroundColor: Colors.redAccent,
+        ));
       }
     }
   }
@@ -427,84 +432,118 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     HapticFeedback.mediumImpact();
 
-    showModalBottomSheet(
+    showGeneralDialog(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.85),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
-          ),
-          child: SafeArea(
-            child: Wrap(
-              children: [
-                // Quick emoji reactions
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: ['❤️', '👍', '😂', '😮', '😢', '🙏'].map((emoji) {
-                      return GestureDetector(
-                        onTap: () {
-                          ref.read(chatRepositoryProvider).addReaction(message.id, emoji);
-                          ref.invalidate(messageReactionsProvider(message.id));
-                          Navigator.pop(context);
-                        },
-                        child: ScaleTransition(
-                          scale: const AlwaysStoppedAnimation(1.1),
-                          child: _animatedEmojiMap.containsKey(emoji)
-                              ? Image.network(
-                                  _animatedEmojiMap[emoji]!,
-                                  width: 32,
-                                  height: 32,
-                                  errorBuilder: (c, e, s) => Text(emoji, style: const TextStyle(fontSize: 30)),
-                                )
-                              : Text(emoji, style: const TextStyle(fontSize: 30)),
+      barrierDismissible: true,
+      barrierLabel: 'MessageMenu',
+      barrierColor: Colors.black.withOpacity(0.7),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (context, animation, secondaryAnimation) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Center(
+            child: ScaleTransition(
+              scale: CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+              child: FadeTransition(
+                opacity: animation,
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: MediaQuery.of(context).size.width * 0.85,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E1E2C).withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.white.withOpacity(0.1)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 8),
                         ),
-                      );
-                    }).toList(),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Quick emoji reactions
+                        Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'React',
+                                style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: ['❤️', '👍', '😂', '😮', '😢', '🔥'].map((emoji) {
+                                  return GestureDetector(
+                                    onTap: () {
+                                      ref.read(chatRepositoryProvider).addReaction(message.id, emoji);
+                                      ref.invalidate(messageReactionsProvider(message.id));
+                                      Navigator.pop(context);
+                                    },
+                                    child: Transform.scale(
+                                      scale: 1.15,
+                                      child: _animatedEmojiMap.containsKey(emoji)
+                                          ? Image.network(
+                                              _animatedEmojiMap[emoji]!,
+                                              width: 38,
+                                              height: 38,
+                                              errorBuilder: (c, e, s) => Text(emoji, style: const TextStyle(fontSize: 30)),
+                                            )
+                                          : Text(emoji, style: const TextStyle(fontSize: 30)),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Divider(color: Colors.white10, height: 1),
+                        ListTile(
+                          leading: const Icon(Icons.reply_rounded, color: Colors.blueAccent),
+                          title: const Text('Reply', style: TextStyle(color: Colors.white)),
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() {
+                              _replyingTo = message;
+                            });
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.copy_rounded, color: Colors.white70),
+                          title: const Text('Copy Text', style: TextStyle(color: Colors.white)),
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: message.content));
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Copied to clipboard')),
+                            );
+                          },
+                        ),
+                        if (isMyMsg) ...[
+                          const Divider(color: Colors.white10, height: 1),
+                          ListTile(
+                            leading: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent),
+                            title: const Text('Delete for Everyone', style: TextStyle(color: Colors.redAccent)),
+                            onTap: () {
+                              ref.read(chatRepositoryProvider).deleteMessage(message.id);
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                      ],
+                    ),
                   ),
                 ),
-                const Divider(color: Colors.white10),
-                ListTile(
-                  leading: const Icon(Icons.reply_rounded, color: Colors.blue),
-                  title: const Text('Reply', style: TextStyle(color: Colors.white)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() {
-                      _replyingTo = message;
-                    });
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.copy_rounded, color: Colors.white70),
-                  title: const Text('Copy Text', style: TextStyle(color: Colors.white)),
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: message.content));
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Copied to clipboard')),
-                    );
-                  },
-                ),
-                if (isMyMsg) ...[
-                  ListTile(
-                    leading: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent),
-                    title: const Text('Delete for Everyone', style: TextStyle(color: Colors.redAccent)),
-                    onTap: () {
-                      ref.read(chatRepositoryProvider).deleteMessage(message.id);
-                      Navigator.pop(context);
-                    },
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -627,7 +666,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    const SnackBar(content: Text('Could not start the call. Please try again.')),
                   );
                 }
               }
@@ -654,7 +693,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    const SnackBar(content: Text('Could not start the video call. Please try again.')),
                   );
                 }
               }
@@ -670,7 +709,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                   if (picked == null) return;
                   await ref.read(themeServiceProvider.notifier).setChatWallpaper(
                         widget.otherUserId,
-                        File(picked.path),
+                        picked,
                       );
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -680,55 +719,32 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: $e')),
+                      const SnackBar(content: Text('Could not update wallpaper. Please try again.')),
                     );
                   }
                 }
-              } else if (val == 'pikachu') {
+              } else if (val.startsWith('preset_')) {
                 await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
                       widget.otherUserId,
-                      'pikachu',
+                      val,
                     );
                 if (mounted) {
+                  final themeTitle = val == 'preset_sunset'
+                      ? 'Sunset'
+                      : val == 'preset_cyberpunk'
+                          ? 'Cyberpunk'
+                          : val == 'preset_cosmic_dark'
+                              ? 'Cosmic Dark'
+                              : 'Glassmorphism';
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ Pikachu wallpaper set!')),
-                  );
-                }
-              } else if (val == 'spiderman') {
-                await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
-                      widget.otherUserId,
-                      'spiderman',
-                    );
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ Spider-Man wallpaper set!')),
-                  );
-                }
-              } else if (val == 'cherries') {
-                await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
-                      widget.otherUserId,
-                      'cherries',
-                    );
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ Cherries wallpaper set!')),
-                  );
-                }
-              } else if (val == 'zenitsu') {
-                await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
-                      widget.otherUserId,
-                      'zenitsu',
-                    );
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ Zenitsu wallpaper set!')),
+                    SnackBar(content: Text('✅ $themeTitle theme set!')),
                   );
                 }
               } else if (val == 'reset_wallpaper') {
                 await ref.read(themeServiceProvider.notifier).removeChatWallpaper(widget.otherUserId);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('✅ Chat wallpaper reset to global!')),
+                    const SnackBar(content: Text('✅ Chat theme reset to default!')),
                   );
                 }
               }
@@ -738,59 +754,61 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                 value: 'wallpaper',
                 child: Row(
                   children: [
-                    Icon(Icons.wallpaper_rounded, size: 20),
+                    Icon(Icons.wallpaper_rounded, size: 20, color: Colors.blueAccent),
                     SizedBox(width: 8),
                     Text('Custom Wallpaper'),
                   ],
                 ),
               ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
-                value: 'pikachu',
+                value: 'preset_sunset',
                 child: Row(
                   children: [
-                    Icon(Icons.star_rounded, size: 20, color: Colors.yellow),
+                    Icon(Icons.wb_sunny_rounded, size: 20, color: Colors.orangeAccent),
                     SizedBox(width: 8),
-                    Text('Pikachu Wallpaper'),
+                    Text('Sunset Theme'),
                   ],
                 ),
               ),
               const PopupMenuItem(
-                value: 'spiderman',
+                value: 'preset_cyberpunk',
                 child: Row(
                   children: [
-                    Icon(Icons.star_rounded, size: 20, color: Colors.red),
+                    Icon(Icons.bolt_rounded, size: 20, color: Colors.purpleAccent),
                     SizedBox(width: 8),
-                    Text('Spider-Man Wallpaper'),
+                    Text('Cyberpunk Theme'),
                   ],
                 ),
               ),
               const PopupMenuItem(
-                value: 'cherries',
+                value: 'preset_cosmic_dark',
                 child: Row(
                   children: [
-                    Icon(Icons.star_rounded, size: 20, color: Colors.pink),
+                    Icon(Icons.brightness_3_rounded, size: 20, color: Colors.indigoAccent),
                     SizedBox(width: 8),
-                    Text('Cherries Wallpaper'),
+                    Text('Cosmic Dark Theme'),
                   ],
                 ),
               ),
               const PopupMenuItem(
-                value: 'zenitsu',
+                value: 'preset_glassmorphism',
                 child: Row(
                   children: [
-                    Icon(Icons.star_rounded, size: 20, color: Colors.orange),
+                    Icon(Icons.blur_on_rounded, size: 20, color: Colors.tealAccent),
                     SizedBox(width: 8),
-                    Text('Zenitsu Wallpaper'),
+                    Text('Glassmorphism Theme'),
                   ],
                 ),
               ),
+              const PopupMenuDivider(),
               const PopupMenuItem(
                 value: 'reset_wallpaper',
                 child: Row(
                   children: [
-                    Icon(Icons.layers_clear_rounded, size: 20),
+                    Icon(Icons.layers_clear_rounded, size: 20, color: Colors.redAccent),
                     SizedBox(width: 8),
-                    Text('Reset Wallpaper'),
+                    Text('Reset Theme'),
                   ],
                 ),
               ),
@@ -811,20 +829,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
                     sigmaY: themeSettings.wallpaperBlur,
                   ),
                   child: Container(
-                    decoration: BoxDecoration(
-                      image: DecorationImage(
-                        image: wallpaperPath == 'pikachu'
-                            ? const AssetImage('assets/images/pikachu_wallpaper.jpg') as ImageProvider
-                            : wallpaperPath == 'spiderman'
-                                ? const AssetImage('assets/images/spiderman_wallpaper.jpg') as ImageProvider
-                                : wallpaperPath == 'cherries'
-                                    ? const AssetImage('assets/images/cherries_wallpaper.jpg') as ImageProvider
-                                    : wallpaperPath == 'zenitsu'
-                                        ? const AssetImage('assets/images/zenitsu_wallpaper.jpg') as ImageProvider
-                                        : FileImage(File(wallpaperPath)),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                    decoration: _getPresetDecoration(wallpaperPath),
                     child: Container(
                       color: Colors.black.withOpacity(themeSettings.wallpaperDim),
                     ),
@@ -1130,7 +1135,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       await _uploadAndSendMedia(file, 'image');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not send image. Please try again.')));
       }
     }
   }
@@ -1143,7 +1148,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       await _uploadAndSendMedia(file, 'image');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not take photo. Please try again.')));
       }
     }
   }
@@ -1156,7 +1161,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       await _uploadAndSendMedia(file, 'video');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not send video. Please try again.')));
       }
     }
   }
@@ -1169,12 +1174,12 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       await _uploadAndSendMedia(file, 'file');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not send file. Please try again.')));
       }
     }
   }
 
-  Future<void> _uploadAndSendMedia(File file, String fileType, {String? messageType}) async {
+  Future<void> _uploadAndSendMedia(XFile file, String fileType, {String? messageType}) async {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Uploading media...'), duration: Duration(seconds: 5)),
@@ -1193,7 +1198,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload failed. Please check your connection and try again.')));
       }
     }
   }
@@ -1216,6 +1221,77 @@ class _ChatPageState extends ConsumerState<ChatPage> {
         child: const BouncingDotsIndicator(),
       ),
     );
+  }
+
+  Decoration _getPresetDecoration(String path) {
+    if (path == 'preset_sunset') {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFF3553C), Color(0xFFF07E33), Color(0xFFC13584)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      );
+    } else if (path == 'preset_cyberpunk') {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1D092A), Color(0xFF08020F), Color(0xFF1B0326)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      );
+    } else if (path == 'preset_cosmic_dark') {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF0B0D1B), Color(0xFF030408), Color(0xFF110E1C)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      );
+    } else if (path == 'preset_glassmorphism') {
+      return const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1F1F2E), Color(0xFF13131A), Color(0xFF1E1E2C)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      );
+    } else if (path == 'pikachu') {
+      return const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/pikachu_wallpaper.jpg'),
+          fit: BoxFit.cover,
+        ),
+      );
+    } else if (path == 'spiderman') {
+      return const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/spiderman_wallpaper.jpg'),
+          fit: BoxFit.cover,
+        ),
+      );
+    } else if (path == 'cherries') {
+      return const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/cherries_wallpaper.jpg'),
+          fit: BoxFit.cover,
+        ),
+      );
+    } else if (path == 'zenitsu') {
+      return const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/zenitsu_wallpaper.jpg'),
+          fit: BoxFit.cover,
+        ),
+      );
+    } else {
+      return BoxDecoration(
+        image: DecorationImage(
+          image: FileImage(File(path)),
+          fit: BoxFit.cover,
+        ),
+      );
+    }
   }
 }
 
@@ -1288,14 +1364,196 @@ class _MessageBubble extends ConsumerWidget {
   final bool isMe;
   final bool isGrouped;
 
+  Widget _buildSongCard(BuildContext context, WidgetRef ref) {
+    final parts = message.content.split('|');
+    final title = parts[0];
+    final artist = parts.length > 1 ? parts[1] : 'Unknown';
+
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.music_note_rounded, color: Colors.white54),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                ),
+                Text(
+                  artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.white70),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoomCard(BuildContext context, WidgetRef ref) {
+    final roomName = message.content;
+    final roomId = message.mediaUrl ?? '';
+
+    return Container(
+      width: 220,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7C3AED).withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.groups_rounded, color: Color(0xFF7C3AED), size: 24),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      roomName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'You are invited to join!',
+                      maxLines: 1,
+                      style: TextStyle(fontSize: 10, color: Colors.white54),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7C3AED),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RoomDetailPage(roomId: roomId),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.login_rounded, size: 14),
+              label: const Text(
+                'Join Listening',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final reactionsAsync = ref.watch(messageReactionsProvider(message.id));
+    final themeSettings = ref.watch(themeServiceProvider);
+    final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
+    final chatPartnerId = message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
+    final wallpaperPath = themeSettings.chatWallpapers[chatPartnerId] ?? themeSettings.globalWallpaperPath;
+    final isGlassmorphism = wallpaperPath == 'preset_glassmorphism';
 
-    return Align(
-      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+    final borderRadius = BorderRadius.only(
+      topLeft: const Radius.circular(18),
+      topRight: const Radius.circular(18),
+      bottomLeft: Radius.circular(isMe ? 18 : 4),
+      bottomRight: Radius.circular(isMe ? 4 : 18),
+    );
+
+    Widget bubbleContent = Container(
+      margin: EdgeInsets.only(
+        bottom: 2,
+        top: isGrouped ? 2 : 10,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.72,
+      ),
+      decoration: isGlassmorphism
+          ? BoxDecoration(
+              gradient: isMe
+                  ? LinearGradient(
+                      colors: [
+                        const Color(0xFFC13584).withOpacity(0.4),
+                        const Color(0xFF833AB4).withOpacity(0.4),
+                        const Color(0xFF5851DB).withOpacity(0.4),
+                      ],
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                    )
+                  : null,
+              color: isMe ? null : Colors.white.withOpacity(0.08),
+              borderRadius: borderRadius,
+              border: Border.all(
+                color: Colors.white.withOpacity(isMe ? 0.25 : 0.12),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            )
+          : BoxDecoration(
+              gradient: isMe
+                  ? const LinearGradient(
+                      colors: [
+                        Color(0xFFC13584), // Purple-red
+                        Color(0xFF833AB4), // Purple
+                        Color(0xFF5851DB), // Blue-violet
+                      ],
+                      begin: Alignment.bottomLeft,
+                      end: Alignment.topRight,
+                    )
+                  : null,
+              color: isMe ? null : const Color(0xFF262626), // Instagram dark gray
+              borderRadius: borderRadius,
+            ),
       child: Column(
-        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Reply preview indicator inside bubble
           if (message.replyTo != null)
@@ -1303,10 +1561,10 @@ class _MessageBubble extends ConsumerWidget {
                   data: (replyMsg) {
                     if (replyMsg == null) return const SizedBox.shrink();
                     return Container(
-                      margin: const EdgeInsets.only(left: 12, right: 12, top: 4),
+                      margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
+                        color: Colors.white.withOpacity(0.06),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -1320,104 +1578,104 @@ class _MessageBubble extends ConsumerWidget {
                   error: (_, __) => const SizedBox.shrink(),
                 ),
 
-          Container(
-            margin: EdgeInsets.only(
-              bottom: 2,
-              top: isGrouped ? 2 : 10,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.72,
-            ),
-            decoration: BoxDecoration(
-              color: isMe 
-                  ? Theme.of(context).colorScheme.primary.withOpacity(0.85) 
-                  : Colors.white.withOpacity(0.1),
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(16),
-                topRight: const Radius.circular(16),
-                bottomLeft: Radius.circular(isMe ? 16 : 4),
-                bottomRight: Radius.circular(isMe ? 4 : 16),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (message.messageType == 'image' && message.mediaUrl != null)
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => FullScreenImageViewer(imageUrl: message.mediaUrl!),
-                        ),
-                      );
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Hero(
-                        tag: message.mediaUrl!,
-                        child: Image.network(
-                          message.mediaUrl!,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              height: 150,
-                              color: Colors.white.withOpacity(0.08),
-                              child: const Center(child: Icon(Icons.broken_image_rounded)),
-                            );
-                          },
-                        ),
-                      ),
+          // Custom share message card builders
+          if (message.messageType == 'share_song')
+            _buildSongCard(context, ref)
+          else if (message.messageType == 'share_room')
+            _buildRoomCard(context, ref)
+          else ...[
+            if (message.messageType == 'image' && message.mediaUrl != null)
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => FullScreenImageViewer(imageUrl: message.mediaUrl!),
                     ),
-                  )
-                else if ((message.messageType == 'voice' || message.messageType == 'audio') && message.mediaUrl != null)
-                  AudioBubblePlayer(audioUrl: message.mediaUrl!)
-                else if (message.messageType == 'video' && message.mediaUrl != null)
-                  _buildVideoBubble(context, message.mediaUrl!),
-                if (message.deleted)
-                  const Text(
-                    'This message was deleted',
-                    style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
-                  )
-                else if (message.content.isNotEmpty)
-                  EmojiTextParser(
-                    text: message.content,
-                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  );
+                },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Hero(
+                    tag: message.mediaUrl!,
+                    child: Image.network(
+                      message.mediaUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 150,
+                          color: Colors.white.withOpacity(0.08),
+                          child: const Center(child: Icon(Icons.broken_image_rounded)),
+                        );
+                      },
+                    ),
                   ),
-                const SizedBox(height: 4),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      DateFormat('HH:mm').format(message.createdAt),
-                      style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.6)),
-                    ),
-                    if (message.edited) ...[
-                      const SizedBox(width: 4),
-                      Text(
-                        '(edited)',
-                        style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.6), fontStyle: FontStyle.italic),
-                      ),
-                    ],
-                    if (isMe) ...[
-                      const SizedBox(width: 4),
-                      ref.watch(messageReadStatusProvider(message.id)).when(
-                            data: (isRead) => Icon(
-                              isRead ? Icons.done_all_rounded : Icons.check_rounded,
-                              size: 13,
-                              color: isRead ? const Color(0xFF34B7F1) : Colors.white60,
-                            ),
-                            loading: () => const Icon(Icons.check_rounded, size: 13, color: Colors.white60),
-                            error: (_, __) => const Icon(Icons.check_rounded, size: 13, color: Colors.white60),
-                          ),
-                    ],
-                  ],
+                ),
+              )
+            else if ((message.messageType == 'voice' || message.messageType == 'audio') && message.mediaUrl != null)
+              AudioBubblePlayer(audioUrl: message.mediaUrl!)
+            else if (message.messageType == 'video' && message.mediaUrl != null)
+              _buildVideoBubble(context, message.mediaUrl!),
+            if (message.deleted)
+              const Text(
+                'This message was deleted',
+                style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
+              )
+            else if (message.content.isNotEmpty)
+              EmojiTextParser(
+                text: message.content,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
+          ],
+          const SizedBox(height: 4),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                DateFormat('HH:mm').format(message.createdAt),
+                style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.6)),
+              ),
+              if (message.edited) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '(edited)',
+                  style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.6), fontStyle: FontStyle.italic),
                 ),
               ],
-            ),
+              if (isMe) ...[
+                const SizedBox(width: 4),
+                ref.watch(messageReadStatusProvider(message.id)).when(
+                      data: (isRead) => Icon(
+                        isRead ? Icons.done_all_rounded : Icons.check_rounded,
+                        size: 13,
+                        color: isRead ? const Color(0xFF34B7F1) : Colors.white60,
+                      ),
+                      loading: () => const Icon(Icons.check_rounded, size: 13, color: Colors.white60),
+                      error: (_, __) => const Icon(Icons.check_rounded, size: 13, color: Colors.white60),
+                    ),
+              ],
+            ],
           ),
+        ],
+      ),
+    );
 
+    if (isGlassmorphism) {
+      bubbleContent = ClipRRect(
+        borderRadius: borderRadius,
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: bubbleContent,
+        ),
+      );
+    }
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          bubbleContent,
           // Render reactions list
           reactionsAsync.when(
             data: (reactions) {
@@ -1913,48 +2171,20 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
         fileName = '$fileName.mp3';
       }
 
-      // Try saving directly to Downloads directory (on Android or Desktop)
-      Directory? dir;
-      bool savedDirectly = false;
-
-      if (Platform.isAndroid) {
-        // Scoped downloads folder on Android
-        dir = Directory('/storage/emulated/0/Download');
-        if (await dir.exists()) {
-          final file = File('${dir.path}/$fileName');
-          await file.writeAsBytes(bytes);
-          savedDirectly = true;
-        }
-      } else if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-        dir = await getDownloadsDirectory();
-        if (dir != null && await dir.exists()) {
-          final file = File('${dir.path}/$fileName');
-          await file.writeAsBytes(bytes);
-          savedDirectly = true;
-        }
-      }
-
-      if (savedDirectly && dir != null) {
+      final savedDirectly = await pf.saveBytesToDownloads(bytes, fileName);
+      if (savedDirectly) {
         ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Saved to Downloads: $fileName')),
         );
       } else {
-        // Fallback for iOS or when direct folder access is restricted
-        final tempDir = await getTemporaryDirectory();
-        final tempFile = File('${tempDir.path}/$fileName');
-        await tempFile.writeAsBytes(bytes);
-
-        await Share.shareXFiles(
-          [XFile(tempFile.path)],
-          text: 'Save CalcX Audio Recording',
-        );
+        await pf.shareFile(bytes, fileName);
       }
     } catch (e) {
       debugPrint('Error saving audio: $e');
       ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save audio: $e')),
+        SnackBar(content: const Text('Could not save audio. Please try again.')),
       );
     }
   }

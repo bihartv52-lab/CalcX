@@ -177,10 +177,11 @@ class ChatRepository {
           final senderName = senderProfile?['username'] as String? ?? 'Someone';
           final participants = await supabase.from('room_participants').select('user_id').eq('room_id', roomId);
           final List<dynamic> list = participants as List<dynamic>? ?? [];
+          final List<Map<String, dynamic>> notificationInserts = [];
           for (final p in list) {
             final pUserId = p['user_id'] as String?;
             if (pUserId != null && pUserId != myId) {
-              await supabase.from('notifications').insert({
+              notificationInserts.add({
                 'user_id': pUserId,
                 'type': 'message',
                 'title': 'New Message in Room',
@@ -192,6 +193,9 @@ class ChatRepository {
                 },
               });
             }
+          }
+          if (notificationInserts.isNotEmpty) {
+            await supabase.from('notifications').insert(notificationInserts);
           }
         } catch (e) {
           debugPrint('Error inserting room message notifications: $e');
@@ -260,10 +264,11 @@ class ChatRepository {
           final senderName = senderProfile?['username'] as String? ?? 'Someone';
           final participants = await supabase.from('room_participants').select('user_id').eq('room_id', roomId);
           final List<dynamic> list = participants as List<dynamic>? ?? [];
+          final List<Map<String, dynamic>> notificationInserts = [];
           for (final p in list) {
             final pUserId = p['user_id'] as String?;
             if (pUserId != null && pUserId != myId) {
-              await supabase.from('notifications').insert({
+              notificationInserts.add({
                 'user_id': pUserId,
                 'type': 'message',
                 'title': 'New Message in Room',
@@ -275,6 +280,9 @@ class ChatRepository {
                 },
               });
             }
+          }
+          if (notificationInserts.isNotEmpty) {
+            await supabase.from('notifications').insert(notificationInserts);
           }
         } catch (e) {
           debugPrint('Error inserting room media message notifications: $e');
@@ -318,13 +326,17 @@ class ChatRepository {
     final myId = supabase.auth.currentUser?.id;
     if (myId == null) return;
 
-    await supabase.from('typing_indicators').upsert({
-      'user_id': myId,
-      'chat_with': chatWithUserId,
-      'room_id': roomId,
-      'is_typing': isTyping,
-      'updated_at': DateTime.now().toIso8601String(),
-    });
+    try {
+      await supabase.from('typing_indicators').upsert({
+        'user_id': myId,
+        'chat_with': chatWithUserId,
+        'room_id': roomId,
+        'is_typing': isTyping,
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Error updating typing indicator: $e');
+    }
   }
 
   Stream<bool> watchTyping(String otherUserId) {
@@ -393,11 +405,15 @@ class ChatRepository {
     final myId = supabase.auth.currentUser?.id;
     if (myId == null) return;
 
-    await supabase.from('message_reads').upsert({
-      'message_id': messageId,
-      'user_id': myId,
-      'read_at': DateTime.now().toIso8601String(),
-    });
+    try {
+      await supabase.from('message_reads').upsert({
+        'message_id': messageId,
+        'user_id': myId,
+        'read_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Error marking message as read: $e');
+    }
   }
 
   Future<List<Map<String, dynamic>>> getRecentChats() async {
@@ -443,24 +459,28 @@ class ChatRepository {
             p['id'] as String: p
         };
 
+        // Fetch all unread messages for all partners in a single query
+        final unreadResponse = await supabase
+            .from('messages')
+            .select('id, sender_id, message_reads(id, user_id)')
+            .inFilter('sender_id', partnerIds)
+            .eq('receiver_id', myId)
+            .filter('room_id', 'is', null);
+
+        final unreadList = unreadResponse as List;
+
         for (final partnerId in chats.keys) {
           chats[partnerId]!['partner_profile'] = profilesMap[partnerId];
 
-          final unreadResponse = await supabase
-              .from('messages')
-              .select('id, message_reads(id, user_id)')
-              .eq('sender_id', partnerId)
-              .eq('receiver_id', myId)
-              .filter('room_id', 'is', null);
-
-          final unreadCount = (unreadResponse as List)
+          final partnerUnreadCount = unreadList
+              .where((m) => m['sender_id'] == partnerId)
               .where((m) {
                 final reads = m['message_reads'] as List? ?? [];
                 return !reads.any((r) => r['user_id'] == myId);
               })
               .length;
 
-          chats[partnerId]!['unread_count'] = unreadCount;
+          chats[partnerId]!['unread_count'] = partnerUnreadCount;
         }
       }
 

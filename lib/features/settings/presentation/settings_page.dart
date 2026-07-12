@@ -5,14 +5,13 @@ import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/calculator/data/passcode_repository.dart';
 import 'package:calcx/features/auth/data/auth_repository.dart';
 import 'package:calcx/core/services/theme_service.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:image/image.dart' as img;
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:io';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -153,12 +152,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final picker = ImagePicker();
       final picked = await picker.pickImage(source: ImageSource.gallery);
       if (picked == null) return;
-
-      final file = File(picked.path);
       
       // Extract color seed from image
       try {
-        final imageBytes = await file.readAsBytes();
+        final imageBytes = await picked.readAsBytes();
         final image = img.decodeImage(imageBytes);
         if (image != null) {
           final pixel = image.getPixel(image.width ~/ 2, image.height ~/ 2);
@@ -172,7 +169,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         debugPrint('Color extraction failed, falling back to default seed: $e');
       }
 
-      await ref.read(themeServiceProvider.notifier).setGlobalWallpaper(file);
+      await ref.read(themeServiceProvider.notifier).setGlobalWallpaper(picked);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ Custom wallpaper updated globally!')),
@@ -181,7 +178,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking wallpaper: $e')),
+          SnackBar(content: const Text('Could not set wallpaper. Please try again.')),
         );
       }
     }
@@ -198,7 +195,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error backing up: $e')),
+          SnackBar(content: const Text('Backup failed. Please try again.')),
         );
       }
     }
@@ -206,15 +203,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _restoreTheme() async {
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final path = '${appDir.path}/theme_backup.json';
-      if (!await File(path).exists()) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No backup file found at default location.')),
-        );
-        return;
-      }
-      await ref.read(themeServiceProvider.notifier).importBackup(path);
+      await ref.read(themeServiceProvider.notifier).importBackup('');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ Theme configuration restored!')),
@@ -223,7 +212,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error restoring: $e')),
+          SnackBar(content: Text(e.toString().replaceAll('Exception:', ''))),
         );
       }
     }
@@ -247,7 +236,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error updating setting: $e')),
+          SnackBar(content: const Text('Could not save setting. Please try again.')),
         );
       }
     }
@@ -715,7 +704,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Error signing out: $e'),
+                  content: const Text('Sign out failed. Please try again.'),
                   backgroundColor: Colors.red,
                 ),
               );

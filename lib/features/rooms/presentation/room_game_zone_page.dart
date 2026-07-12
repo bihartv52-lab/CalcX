@@ -541,7 +541,7 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start game: $e')),
+          SnackBar(content: const Text('Could not start game. Please try again.')),
         );
       }
     }

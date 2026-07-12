@@ -9,12 +9,12 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load .env file
+  // Load app.env file from assets
   try {
-    await dotenv.load(fileName: '.env');
+    await dotenv.load(fileName: 'assets/app.env');
   } catch (e) {
-    // .env file not found or error loading, continue without it
-    debugPrint('Could not load .env file: $e');
+    // app.env file not found or error loading, continue without it
+    debugPrint('Could not load assets/app.env file: $e');
   }
 
   final env = AppEnv.fromEnvironment();

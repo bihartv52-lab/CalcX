@@ -7,6 +7,7 @@ import 'package:calcx/features/friends/presentation/user_search_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:calcx/core/services/supabase_service.dart';
 
 final friendsListProvider = FutureProvider<List<UserProfile>>((ref) async {
   final repository = ref.watch(friendsRepositoryProvider);
@@ -44,13 +45,36 @@ class FriendsPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(friendsListProvider);
-          ref.invalidate(pendingRequestsProvider);
-        },
-        child: CustomScrollView(
-          slivers: [
+      body: SupabaseService.clientOrNull == null
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.cloud_off_rounded, size: 64, color: Colors.grey),
+                    SizedBox(height: 16),
+                    Text(
+                      'Supabase not configured',
+                      style: TextStyle(fontSize: 18, color: Colors.grey),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Adding friends and tracking pending requests require a connected database.',
+                      style: TextStyle(color: Colors.grey),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(friendsListProvider);
+                ref.invalidate(pendingRequestsProvider);
+              },
+              child: CustomScrollView(
+                slivers: [
             // Friend Requests Section
             requestsAsync.when(
               data: (requests) {
@@ -176,13 +200,23 @@ class _FriendRequestTile extends ConsumerWidget {
                 ref.invalidate(friendsListProvider);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Friend request accepted!')),
+                    SnackBar(
+                      content: Text('${sender.displayName} is now your friend!'),
+                      backgroundColor: Colors.green,
+                      action: SnackBarAction(
+                        label: 'Message',
+                        textColor: Colors.white,
+                        onPressed: () {
+                          context.push('/chat/${sender.id}');
+                        },
+                      ),
+                    ),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    const SnackBar(content: Text('Something went wrong. Please try again.')),
                   );
                 }
               }
@@ -203,7 +237,7 @@ class _FriendRequestTile extends ConsumerWidget {
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
+                    const SnackBar(content: Text('Could not reject request. Please try again.')),
                   );
                 }
               }
@@ -253,7 +287,17 @@ class _FriendTile extends ConsumerWidget {
       ),
       title: Text(friend.displayName),
       subtitle: Text('@${friend.username} • ${friend.getPresenceText()}'),
-      trailing: PopupMenuButton(
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.blueAccent),
+            tooltip: 'Send Message',
+            onPressed: () {
+              context.push('/chat/${friend.id}');
+            },
+          ),
+          PopupMenuButton(
         itemBuilder: (context) => [
           const PopupMenuItem(
             value: 'message',
@@ -312,7 +356,7 @@ class _FriendTile extends ConsumerWidget {
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error starting call: $e')),
+                    const SnackBar(content: Text('Could not start the call. Please try again.')),
                   );
                 }
               }
@@ -350,7 +394,7 @@ class _FriendTile extends ConsumerWidget {
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Error: $e')),
+                      const SnackBar(content: Text('Could not remove friend. Please try again.')),
                     );
                   }
                 }
@@ -358,6 +402,8 @@ class _FriendTile extends ConsumerWidget {
               break;
           }
         },
+      ),
+        ],
       ),
       onTap: () {
         // Navigate to chat with friend

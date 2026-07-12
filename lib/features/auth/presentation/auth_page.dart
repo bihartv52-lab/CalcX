@@ -56,6 +56,10 @@ class _AuthPageState extends ConsumerState<AuthPage>
         _userEditedUsername = true;
       }
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAndNavigate();
+    });
   }
 
   void _onEmailChanged() {
@@ -246,7 +250,7 @@ class _AuthPageState extends ConsumerState<AuthPage>
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text('Error: ${e.toString().replaceAll('Exception:', '')}'),
+                      content: const Text('Could not send reset link. Check your email and try again.'),
                       backgroundColor: const Color(0xFFFF4D6A),
                     ),
                   );
@@ -587,11 +591,17 @@ class _AuthPageState extends ConsumerState<AuthPage>
                         username: usernameVal,
                         password: _password.text,
                       );
+                      if (mounted && !ref.read(authControllerProvider).hasError) {
+                        context.go(AppRoutes.home);
+                      }
                     } else {
                       await controller.signIn(
                         email: _email.text.trim(),
                         password: _password.text,
                       );
+                      if (mounted && !ref.read(authControllerProvider).hasError) {
+                        context.go(AppRoutes.home);
+                      }
                     }
                   },
           ),
