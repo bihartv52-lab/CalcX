@@ -37,7 +37,7 @@ class ChatRepository {
         final response = await supabase
             .from('messages')
             .select()
-            .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
+            .or('(and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId))')
             .filter('room_id', 'is', null)
             .order('created_at', ascending: false)
             .limit(100);
@@ -427,7 +427,7 @@ class ChatRepository {
       final response = await supabase
           .from('messages')
           .select()
-          .or('sender_id.eq.$myId,receiver_id.eq.$myId')
+          .or('(sender_id.eq.$myId,receiver_id.eq.$myId)')
           .order('created_at', ascending: false)
           .limit(100);
 
