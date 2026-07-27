@@ -44,7 +44,7 @@ class FriendsRepository {
       final response = await _supabase
           .from('profiles')
           .select()
-          .or('(username.ilike.%$sanitized%,display_name.ilike.%$sanitized%)')
+          .or('username.ilike.%$sanitized%,display_name.ilike.%$sanitized%')
           .limit(20);
 
       return (response as List)

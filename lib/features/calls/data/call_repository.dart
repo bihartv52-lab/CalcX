@@ -175,7 +175,7 @@ class CallRepository {
           .select(
             '*, caller_profile:profiles!calls_caller_id_fkey(*), receiver_profile:profiles!calls_receiver_id_fkey(*)',
           )
-          .or('(caller_id.eq.$myId,receiver_id.eq.$myId)')
+          .or('caller_id.eq.$myId,receiver_id.eq.$myId')
           .order('started_at', ascending: false)
           .limit(100);
 
@@ -211,7 +211,7 @@ class CallRepository {
       final response = await supabase
           .from('calls')
           .select()
-          .or('(caller_id.eq.$userId,receiver_id.eq.$userId)')
+          .or('caller_id.eq.$userId,receiver_id.eq.$userId')
           .eq('status', 'ongoing')
           .maybeSingle();
 
