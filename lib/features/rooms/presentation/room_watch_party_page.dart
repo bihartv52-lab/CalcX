@@ -738,15 +738,15 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     final localScreenShare = room.localParticipant?.videoTrackPublications
         .where((pub) => pub.source == TrackSource.screenShareVideo)
         .firstOrNull;
-    if (localScreenShare?.track != null) {
-      return localScreenShare!.track;
+    if (localScreenShare != null && localScreenShare.track != null) {
+      return localScreenShare.track;
     }
 
     for (final p in room.remoteParticipants.values) {
       final screenSharePub = p.videoTrackPublications
           .where((pub) => pub.source == TrackSource.screenShareVideo)
           .firstOrNull;
-      if (screenSharePub?.track != null) {
+      if (screenSharePub != null && screenSharePub.track != null) {
         return screenSharePub.track;
       }
     }
