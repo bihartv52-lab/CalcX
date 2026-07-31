@@ -88,3 +88,5 @@ Future<String> getTempDirectoryPath() async {
   final tempDir = await getTemporaryDirectory();
   return tempDir.path;
 }
+
+void toggleBrowserFullscreen(bool enter) {}

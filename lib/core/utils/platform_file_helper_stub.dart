@@ -29,3 +29,5 @@ Future<void> shareFile(Uint8List bytes, String fileName) {
 Future<String> getTempDirectoryPath() {
   throw UnsupportedError('Cannot get temp directory on this platform.');
 }
+
+void toggleBrowserFullscreen(bool enter) {}

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
+import 'package:calcx/core/utils/platform_file_helper.dart' as pf;
 import 'package:calcx/features/rooms/domain/playback_state.dart';
 import 'package:calcx/features/rooms/data/playlist_parser.dart';
 import 'package:calcx/features/calls/data/livekit_call_service.dart';
@@ -719,6 +720,8 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     setState(() {
       _isFullscreen = !_isFullscreen;
     });
+
+    pf.toggleBrowserFullscreen(_isFullscreen);
 
     if (_isFullscreen) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);

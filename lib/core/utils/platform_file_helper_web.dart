@@ -64,3 +64,17 @@ Future<void> shareFile(Uint8List bytes, String fileName) async {
 Future<String> getTempDirectoryPath() async {
   return '';
 }
+
+void toggleBrowserFullscreen(bool enter) {
+  try {
+    if (enter) {
+      html.document.documentElement?.requestFullscreen();
+    } else {
+      if (html.document.fullscreenElement != null) {
+        html.document.exitFullscreen();
+      }
+    }
+  } catch (e) {
+    html.window.console.warn('Fullscreen error: $e');
+  }
+}
