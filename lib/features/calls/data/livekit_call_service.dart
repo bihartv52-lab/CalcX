@@ -25,17 +25,19 @@ class LiveKitCallService {
       throw StateError('LiveKit URL is not configured.');
     }
 
-    try {
-      final permissions = [
-        Permission.microphone,
-        Permission.bluetoothConnect,
-      ];
-      if (video) {
-        permissions.add(Permission.camera);
+    if (!kIsWeb) {
+      try {
+        final permissions = [
+          Permission.microphone,
+          Permission.bluetoothConnect,
+        ];
+        if (video) {
+          permissions.add(Permission.camera);
+        }
+        await permissions.request();
+      } catch (e) {
+        debugPrint('Error requesting permissions for room join: $e');
       }
-      await permissions.request();
-    } catch (e) {
-      debugPrint('Error requesting permissions for room join: $e');
     }
 
     _room = Room(

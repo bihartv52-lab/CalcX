@@ -1966,6 +1966,51 @@ class _PulsingRecordDotState extends State<PulsingRecordDot>
   }
 }
 
+Future<void> _saveFileToDevice({
+  required BuildContext context,
+  required String url,
+  required String defaultPrefix,
+  required String extension,
+}) async {
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(content: Text('Downloading file...')),
+  );
+
+  try {
+    final uri = Uri.parse(url);
+    final response = await http.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception('Failed to download file (Status: ${response.statusCode})');
+    }
+
+    final bytes = response.bodyBytes;
+
+    String fileName = '${defaultPrefix}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    if (uri.pathSegments.isNotEmpty) {
+      fileName = uri.pathSegments.last;
+    }
+    if (!fileName.contains('.')) {
+      fileName = '$fileName.$extension';
+    }
+
+    final savedDirectly = await pf.saveBytesToDownloads(bytes, fileName);
+    if (savedDirectly) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Saved to Downloads: $fileName')),
+      );
+    } else {
+      await pf.shareFile(bytes, fileName);
+    }
+  } catch (e) {
+    debugPrint('Error saving file: $e');
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Failed to save file: $e')),
+    );
+  }
+}
+
 class FullScreenImageViewer extends StatelessWidget {
   final String imageUrl;
 
@@ -1982,6 +2027,18 @@ class FullScreenImageViewer extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download_rounded, color: Colors.white),
+            tooltip: 'Download Image',
+            onPressed: () => _saveFileToDevice(
+              context: context,
+              url: imageUrl,
+              defaultPrefix: 'calcx_image',
+              extension: 'png',
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: InteractiveViewer(
@@ -2052,6 +2109,18 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download_rounded, color: Colors.white),
+            tooltip: 'Download Video',
+            onPressed: () => _saveFileToDevice(
+              context: context,
+              url: widget.videoUrl,
+              defaultPrefix: 'calcx_video',
+              extension: 'mp4',
+            ),
+          ),
+        ],
       ),
       body: Center(
         child: AspectRatio(
@@ -2371,7 +2440,7 @@ class EmojiTextParser extends StatelessWidget {
       ));
     }
 
-    return Text.rich(
+    return SelectableText.rich(
       TextSpan(children: spans),
     );
   }

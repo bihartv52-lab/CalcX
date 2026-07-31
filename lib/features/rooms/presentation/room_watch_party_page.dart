@@ -21,6 +21,10 @@ import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:calcx/features/auth/data/auth_repository.dart';
+import 'package:calcx/core/constants/app_routes.dart';
+import 'package:go_router/go_router.dart';
+
 class RoomWatchPartyPage extends ConsumerStatefulWidget {
   const RoomWatchPartyPage({
     super.key,
@@ -74,9 +78,29 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
   final _chatController = TextEditingController();
   final _chatScrollController = ScrollController();
 
+  bool _isAuthLoading = true;
+
   @override
   void initState() {
     super.initState();
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    final signedIn = await ref.read(authRepositoryProvider).isSignedIn();
+    if (!signedIn && mounted) {
+      context.go(AppRoutes.auth);
+    } else {
+      if (mounted) {
+        setState(() {
+          _isAuthLoading = false;
+        });
+        _initializeControllerAndStreams();
+      }
+    }
+  }
+
+  void _initializeControllerAndStreams() {
     _roomSubscription = ref.read(roomRepositoryProvider).watchRoom(widget.roomId).listen((roomData) {
       _lastRoomData = roomData;
       _onRoomDataUpdated(roomData);
@@ -155,6 +179,19 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     });
   }
 
+  bool _isSameSource(String? urlA, String? urlB) {
+    if (urlA == urlB) return true;
+    if (urlA == null || urlB == null) return false;
+    
+    final idA = YoutubePlayer.convertUrlToId(urlA);
+    final idB = YoutubePlayer.convertUrlToId(urlB);
+    if (idA != null && idB != null) {
+      return idA == idB;
+    }
+    
+    return urlA.trim().toLowerCase() == urlB.trim().toLowerCase();
+  }
+
   void _onRoomDataUpdated(Map<String, dynamic> roomData) async {
     final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
     final hostId = roomData['host_id'] as String?;
@@ -178,7 +215,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     if (sourceUrl == null || sourceUrl.isEmpty) return;
 
     // Check if source changed
-    final sourceChanged = _currentSourceUrl != sourceUrl;
+    final sourceChanged = !_isSameSource(_currentSourceUrl, sourceUrl);
     if (sourceChanged) {
       _currentSourceUrl = sourceUrl;
       _urlController.text = sourceUrl;
@@ -1069,6 +1106,13 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isAuthLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final isMediaMuted = ref.watch(watchPartyMutedProvider);
     final mediaVolume = ref.watch(watchPartyVolumeProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {

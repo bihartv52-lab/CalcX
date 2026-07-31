@@ -6,6 +6,7 @@ import 'package:calcx/features/rooms/presentation/room_watch_party_page.dart';
 import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
 import 'package:calcx/features/friends/presentation/friends_page.dart';
 
@@ -19,6 +20,7 @@ class RoomDetailPage extends ConsumerStatefulWidget {
 }
 
 class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
+  bool _isAuthLoading = true;
   bool _isJoined = false;
   bool _isLoading = false;
   late Future<Map<String, dynamic>> _roomDetailsFuture;
@@ -26,8 +28,22 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
   @override
   void initState() {
     super.initState();
-    _checkIfJoined();
-    _refreshRoomDetails();
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    final signedIn = await ref.read(authRepositoryProvider).isSignedIn();
+    if (!signedIn && mounted) {
+      context.go(AppRoutes.auth);
+    } else {
+      if (mounted) {
+        setState(() {
+          _isAuthLoading = false;
+        });
+        _checkIfJoined();
+        _refreshRoomDetails();
+      }
+    }
   }
 
   void _refreshRoomDetails() {
@@ -101,6 +117,13 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isAuthLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Room'),
@@ -251,14 +274,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
                           title: 'Game Zone',
                           subtitle: 'Play Ludo, Skribbl, and XO with friends',
                           onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => RoomGameZonePage(
-                                  roomId: widget.roomId,
-                                  roomName: roomName,
-                                ),
-                              ),
-                            );
+                            context.push('/room/${widget.roomId}/game?name=${Uri.encodeComponent(roomName)}');
                           },
                         ),
                       ] else ...[
@@ -268,14 +284,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
                           title: 'Watch Party',
                           subtitle: 'Watch videos together',
                           onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => RoomWatchPartyPage(
-                                  roomId: widget.roomId,
-                                  roomName: roomName,
-                                ),
-                              ),
-                            );
+                            context.push('/room/${widget.roomId}/watch?name=${Uri.encodeComponent(roomName)}');
                           },
                         ),
                       ],
@@ -285,14 +294,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
                         title: 'Room Chat',
                         subtitle: 'Chat with room members',
                         onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => RoomChatPage(
-                                  roomId: widget.roomId,
-                                  roomName: roomName,
-                                ),
-                            ),
-                          );
+                          context.push('/room/${widget.roomId}/chat?name=${Uri.encodeComponent(roomName)}');
                         },
                       ),
                       const Divider(height: 24),
@@ -301,14 +303,7 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
                         title: 'Voice Call',
                         subtitle: 'Start a voice call with everyone',
                         onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => RoomVoiceCallPage(
-                                roomId: widget.roomId,
-                                roomName: roomName,
-                              ),
-                            ),
-                          );
+                          context.push('/room/${widget.roomId}/voice?name=${Uri.encodeComponent(roomName)}');
                         },
                       ),
                     ],

@@ -11,6 +11,10 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:calcx/features/rooms/presentation/widgets/ludo_game_widget.dart';
 import 'package:calcx/features/rooms/presentation/widgets/scribble_game_widget.dart';
 
+import 'package:calcx/features/auth/data/auth_repository.dart';
+import 'package:calcx/core/constants/app_routes.dart';
+import 'package:go_router/go_router.dart';
+
 class RoomGameZonePage extends ConsumerStatefulWidget {
   const RoomGameZonePage({
     super.key,
@@ -70,10 +74,26 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
   int get _drawCurrentRatingIndex => _drawGameState['current_rating_index'] as int? ?? 0;
   Map<String, dynamic> get _drawRatings => _drawGameState['ratings'] as Map<String, dynamic>? ?? {};
 
+  bool _isAuthLoading = true;
+
   @override
   void initState() {
     super.initState();
-    _subscribeToGameSession();
+    _checkAuth();
+  }
+
+  Future<void> _checkAuth() async {
+    final signedIn = await ref.read(authRepositoryProvider).isSignedIn();
+    if (!signedIn && mounted) {
+      context.go(AppRoutes.auth);
+    } else {
+      if (mounted) {
+        setState(() {
+          _isAuthLoading = false;
+        });
+        _subscribeToGameSession();
+      }
+    }
   }
 
   @override
@@ -1015,6 +1035,13 @@ class _RoomGameZonePageState extends ConsumerState<RoomGameZonePage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isAuthLoading) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final screenWidth = MediaQuery.of(context).size.width;
     final showSidebar = _sidePanelType != 'none';
     final sidebarWidth = screenWidth > 760 ? 300.0 : screenWidth * 0.45;

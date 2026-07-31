@@ -4,6 +4,7 @@ import 'package:calcx/features/rooms/presentation/room_detail_page.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 class RoomsTabNotifier extends Notifier<int> {
   @override
@@ -207,11 +208,7 @@ class RoomsPage extends ConsumerWidget {
                       subtitle: _getRoomTypeDescription(room['visibility'] as String?),
                       icon: _getRoomIcon(room['visibility'] as String?),
                       onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => RoomDetailPage(roomId: room['id'] as String),
-                          ),
-                        );
+                        context.push('/room/${room['id']}');
                       },
                     );
                   },
@@ -298,11 +295,7 @@ class RoomsPage extends ConsumerWidget {
                   
                   if (context.mounted) {
                     Navigator.of(context).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => RoomDetailPage(roomId: roomId),
-                      ),
-                    );
+                    context.push('/room/$roomId');
                   }
                 } catch (e) {
                   if (context.mounted) {

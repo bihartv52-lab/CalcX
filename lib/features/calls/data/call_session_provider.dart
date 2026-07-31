@@ -80,10 +80,12 @@ class ActiveCallSessionNotifier extends Notifier<CallSession?> {
     );
 
     // Set default speakerphone
-    try {
-      await Hardware.instance.setSpeakerphoneOn(true);
-    } catch (e) {
-      debugPrint('Error setting initial speakerphone: $e');
+    if (!kIsWeb) {
+      try {
+        await Hardware.instance.setSpeakerphoneOn(true);
+      } catch (e) {
+        debugPrint('Error setting initial speakerphone: $e');
+      }
     }
 
     state = CallSession(
@@ -132,11 +134,15 @@ class ActiveCallSessionNotifier extends Notifier<CallSession?> {
     final current = state;
     if (current == null) return;
     final newState = !current.isSpeakerOn;
-    try {
-      await Hardware.instance.setSpeakerphoneOn(newState);
+    if (!kIsWeb) {
+      try {
+        await Hardware.instance.setSpeakerphoneOn(newState);
+        state = current.copyWith(isSpeakerOn: newState);
+      } catch (e) {
+        debugPrint('Error toggling speaker: $e');
+      }
+    } else {
       state = current.copyWith(isSpeakerOn: newState);
-    } catch (e) {
-      debugPrint('Error toggling speaker: $e');
     }
   }
 
