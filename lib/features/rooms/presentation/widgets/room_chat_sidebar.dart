@@ -10,6 +10,7 @@ import 'package:calcx/features/friends/data/friends_repository.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart' hide ConnectionState;
 import 'package:calcx/core/models/user_profile.dart';
@@ -43,6 +44,8 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
   bool _isVcConnecting = false;
   bool _isSpeakerOn = true;
   bool _isMuted = false;
+  bool _isScreenSharing = false;
+  bool _isCamEnabled = true;
 
   @override
   void initState() {
@@ -104,10 +107,12 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
         video: video,
       );
 
-      try {
-        await Hardware.instance.setSpeakerphoneOn(_isSpeakerOn);
-      } catch (e) {
-        debugPrint('Error setting initial speakerphone: $e');
+      if (!kIsWeb) {
+        try {
+          await Hardware.instance.setSpeakerphoneOn(_isSpeakerOn);
+        } catch (e) {
+          debugPrint('Error setting initial speakerphone: $e');
+        }
       }
 
       callService.room?.addListener(_onRoomUpdate);
@@ -116,6 +121,9 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
         setState(() {
           _isInVcOrCall = true;
           _isVcConnecting = false;
+          _isMuted = false;
+          _isCamEnabled = video;
+          _isScreenSharing = false;
         });
       }
     } catch (e) {
@@ -140,6 +148,7 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
       setState(() {
         _isInVcOrCall = false;
         _isVcConnecting = false;
+        _isScreenSharing = false;
       });
     }
   }
@@ -498,7 +507,10 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
       final callService = ref.watch(liveKitCallServiceProvider);
       final room = callService.room;
       final remotes = room?.remoteParticipants.values.toList() ?? [];
-      final localTrack = room?.localParticipant?.videoTrackPublications.firstOrNull?.track;
+      final localScreenShare = room?.localParticipant?.videoTrackPublications
+          .where((pub) => pub.source == TrackSource.screenShareVideo)
+          .firstOrNull;
+      final localTrack = localScreenShare?.track ?? room?.localParticipant?.videoTrackPublications.firstOrNull?.track;
 
       return Column(
         children: [
@@ -509,9 +521,53 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Video Party', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                IconButton(
-                  icon: const Icon(Icons.call_end_rounded, color: Colors.red, size: 16),
-                  onPressed: _stopVcOrCall,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(_isMuted ? Icons.mic_off_rounded : Icons.mic_rounded, size: 16, color: _isMuted ? Colors.redAccent : Colors.white70),
+                      onPressed: () async {
+                        final local = room?.localParticipant;
+                        if (local != null) {
+                          final newMute = !_isMuted;
+                          await local.setMicrophoneEnabled(!newMute);
+                          setState(() {
+                            _isMuted = newMute;
+                          });
+                        }
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(_isCamEnabled ? Icons.videocam_rounded : Icons.videocam_off_rounded, size: 16, color: !_isCamEnabled ? Colors.redAccent : Colors.white70),
+                      onPressed: () async {
+                        final local = room?.localParticipant;
+                        if (local != null) {
+                          final newCam = !_isCamEnabled;
+                          await local.setCameraEnabled(newCam);
+                          setState(() {
+                            _isCamEnabled = newCam;
+                          });
+                        }
+                      },
+                    ),
+                    IconButton(
+                      icon: Icon(_isScreenSharing ? Icons.stop_screen_share_rounded : Icons.screen_share_rounded, size: 16, color: _isScreenSharing ? Colors.blueAccent : Colors.white70),
+                      onPressed: () async {
+                        final local = room?.localParticipant;
+                        if (local != null) {
+                          final newShare = !_isScreenSharing;
+                          await local.setScreenShareEnabled(newShare);
+                          setState(() {
+                            _isScreenSharing = newShare;
+                          });
+                        }
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.call_end_rounded, color: Colors.red, size: 16),
+                      onPressed: _stopVcOrCall,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -535,7 +591,10 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
                     ),
                   ),
                 ...remotes.map((p) {
-                  final videoTrack = p.videoTrackPublications.firstOrNull?.track;
+                  final screenSharePub = p.videoTrackPublications
+                      .where((pub) => pub.source == TrackSource.screenShareVideo)
+                      .firstOrNull;
+                  final videoTrack = screenSharePub?.track ?? p.videoTrackPublications.firstOrNull?.track;
                   return Container(
                     height: 110,
                     margin: const EdgeInsets.only(bottom: 8),
