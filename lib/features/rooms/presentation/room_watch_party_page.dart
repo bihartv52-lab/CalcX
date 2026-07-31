@@ -6,6 +6,8 @@ import 'package:calcx/core/utils/platform_file_helper.dart' as pf;
 import 'package:calcx/features/rooms/domain/playback_state.dart';
 import 'package:calcx/features/rooms/data/playlist_parser.dart';
 import 'package:calcx/features/calls/data/livekit_call_service.dart';
+import 'package:livekit_client/livekit_client.dart';
+import 'package:calcx/core/services/livekit_token_service.dart';
 import 'package:calcx/features/friends/data/friends_repository.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
 import 'package:calcx/core/services/supabase_service.dart';
@@ -213,16 +215,28 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
     // Sync guest with host's playback state
     final sourceUrl = state.sourceUrl;
+    final dbSourceType = state.sourceType;
+    if (dbSourceType == 'screenshare') {
+      if (_sourceType != 'screenshare') {
+        setState(() {
+          _sourceType = 'screenshare';
+          _currentSourceUrl = '';
+          _urlController.text = '';
+        });
+      }
+      _ensureConnectedToCall();
+      return;
+    }
+
     if (sourceUrl == null || sourceUrl.isEmpty) return;
 
     // Check if source changed
-    final sourceChanged = !_isSameSource(_currentSourceUrl, sourceUrl);
+    final sourceChanged = !_isSameSource(_currentSourceUrl, sourceUrl) || _sourceType == 'screenshare';
     if (sourceChanged) {
       _currentSourceUrl = sourceUrl;
       _urlController.text = sourceUrl;
 
       // Respect dbSourceType or Auto-detect source type and load
-      final dbSourceType = state.sourceType;
       if (dbSourceType != null && dbSourceType != _sourceType) {
         setState(() {
           _sourceType = dbSourceType;
@@ -716,6 +730,60 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     }
   }
 
+  Track? _findActiveScreenShareTrack() {
+    final callService = ref.read(liveKitCallServiceProvider);
+    final room = callService.room;
+    if (room == null) return null;
+
+    final localScreenShare = room.localParticipant?.videoTrackPublications
+        .where((pub) => pub.source == TrackSource.screenShareVideo)
+        .firstOrNull;
+    if (localScreenShare?.track != null) {
+      return localScreenShare!.track;
+    }
+
+    for (final p in room.remoteParticipants.values) {
+      final screenSharePub = p.videoTrackPublications
+          .where((pub) => pub.source == TrackSource.screenShareVideo)
+          .firstOrNull;
+      if (screenSharePub?.track != null) {
+        return screenSharePub.track;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _ensureConnectedToCall() async {
+    final callService = ref.read(liveKitCallServiceProvider);
+    if (callService.room != null) return;
+
+    final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      final roomName = 'room_call_${widget.roomId}';
+      final token = await ref.read(livekitTokenServiceProvider).getToken(
+        roomName: roomName,
+        participantName: myId,
+      );
+      await callService.joinRoom(
+        roomName: roomName,
+        token: token,
+        video: false,
+      );
+    } catch (e) {
+      debugPrint('Error joining room call for screenshare: $e');
+    }
+  }
+
+  bool _isLocalScreenSharing() {
+    final room = ref.read(liveKitCallServiceProvider).room;
+    final localScreenShare = room?.localParticipant?.videoTrackPublications
+        .where((pub) => pub.source == TrackSource.screenShareVideo)
+        .firstOrNull;
+    return localScreenShare?.track != null;
+  }
+
   void _toggleFullscreen() {
     setState(() {
       _isFullscreen = !_isFullscreen;
@@ -737,6 +805,39 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
 
 
+  Widget _buildScreenSharePlayer() {
+    final track = _findActiveScreenShareTrack();
+    if (track != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
+        child: VideoTrackRenderer(track as VideoTrack, fit: VideoViewFit.contain),
+      );
+    }
+
+    final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
+    final hostId = _lastRoomData?['host_id'] as String?;
+    final isHost = myId != null && hostId != null && myId == hostId;
+
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.screen_share_rounded, size: 48, color: Colors.white38),
+            const SizedBox(height: 12),
+            Text(
+              isHost
+                  ? 'Click "Start Sharing" to stream your screen'
+                  : 'Waiting for Host to share screen...',
+              style: const TextStyle(color: Colors.white60, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVideoPlayerArea() {
     final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
     final hostId = _lastRoomData?['host_id'] as String?;
@@ -749,9 +850,11 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           children: [
             // The Player
             Positioned.fill(
-              child: kIsWeb
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
+              child: _sourceType == 'screenshare'
+                  ? _buildScreenSharePlayer()
+                  : kIsWeb
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
                       child: _currentSourceUrl != null && _currentSourceUrl!.isNotEmpty
                           ? createIFrameWidget(_currentSourceUrl!)
                           : Container(
@@ -1252,18 +1355,23 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
                     Expanded(
                       child: _SourceButton(
                         icon: Icons.play_circle_outline_rounded,
-                        label: 'YouTube',
-                        isSelected: _sourceType == 'youtube',
+                        label: 'Video Link',
+                        isSelected: _sourceType == 'youtube' || _sourceType == 'url',
                         onTap: () => setState(() => _sourceType = 'youtube'),
                       ),
                     ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: _SourceButton(
-                        icon: Icons.link_rounded,
-                        label: 'Direct URL',
-                        isSelected: _sourceType == 'url',
-                        onTap: () => setState(() => _sourceType = 'url'),
+                        icon: Icons.screen_share_rounded,
+                        label: 'Screen Share',
+                        isSelected: _sourceType == 'screenshare',
+                        onTap: () {
+                          setState(() => _sourceType = 'screenshare');
+                          if (isHost) {
+                            _syncPlayback(showSnackBar: false);
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -1291,8 +1399,54 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           ),
           const SizedBox(height: 16),
 
+          // Screen Share Control Box
+          if (_sourceType == 'screenshare') ...[
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Watch Netflix / Share Screen',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'How to watch together:\n'
+                    '1. Click "Start Screen Share".\n'
+                    '2. Select your Netflix tab or browser window (make sure "Share audio" is checked).\n'
+                    '3. Split your screen (Netflix on one half, CalcX on the other) to watch and chat at the same time.',
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        await _ensureConnectedToCall();
+                        final callService = ref.read(liveKitCallServiceProvider);
+                        final local = callService.room?.localParticipant;
+                        if (local != null) {
+                          final isSharing = _isLocalScreenSharing();
+                          await local.setScreenShareEnabled(!isSharing);
+                          setState(() {});
+                          await _syncPlayback();
+                        }
+                      },
+                      icon: Icon(_isLocalScreenSharing() ? Icons.stop_screen_share_rounded : Icons.screen_share_rounded),
+                      label: Text(_isLocalScreenSharing() ? 'Stop Screen Share' : 'Start Screen Share'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _isLocalScreenSharing() ? Colors.redAccent : null,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // URL Input
-          if (_sourceType != 'local') ...[
+          if (_sourceType != 'local' && _sourceType != 'screenshare') ...[
             GlassCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1329,7 +1483,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
                           : () {
                               final url = _urlController.text.trim();
                               if (url.isNotEmpty) {
-                                if (_sourceType == 'youtube') {
+                                final isYoutube = url.contains('youtube.com') || url.contains('youtu.be') || url.contains('spotify.com');
+                                if (isYoutube) {
+                                  setState(() => _sourceType = 'youtube');
                                   _loadPlaylistOrVideo(url);
                                 } else if (_sourceType == 'browser') {
                                   _loadBrowserUrl(url);
@@ -1337,6 +1493,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
                                     _syncPlayback(showSnackBar: false);
                                   }
                                 } else {
+                                  setState(() => _sourceType = 'url');
                                   _loadDirectUrl(url);
                                 }
                               }
