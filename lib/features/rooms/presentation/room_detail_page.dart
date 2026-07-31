@@ -7,6 +7,8 @@ import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:calcx/features/auth/data/auth_repository.dart';
+import 'package:calcx/core/constants/app_routes.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
 import 'package:calcx/features/friends/presentation/friends_page.dart';
 
