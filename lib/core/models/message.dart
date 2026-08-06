@@ -1,3 +1,5 @@
+enum MessageStatus { sending, delivered, failed }
+
 class Message {
   const Message({
     required this.id,
@@ -14,6 +16,9 @@ class Message {
     this.deleted = false,
     required this.createdAt,
     this.senderProfile,
+    this.status = MessageStatus.delivered,
+    this.reactions = const [],
+    this.readUserIds = const [],
   });
 
   factory Message.fromMap(Map<String, dynamic> map) {
@@ -36,6 +41,15 @@ class Message {
       senderProfile: map['profiles'] != null
           ? Map<String, dynamic>.from(map['profiles'])
           : null,
+      status: MessageStatus.delivered,
+      reactions: (map['message_reactions'] as List?)
+              ?.map((e) => Map<String, dynamic>.from(e as Map))
+              .toList() ??
+          const [],
+      readUserIds: (map['message_reads'] as List?)
+              ?.map((e) => e['user_id'] as String)
+              .toList() ??
+          const [],
     );
   }
 
@@ -53,6 +67,9 @@ class Message {
   final bool deleted;
   final DateTime createdAt;
   final Map<String, dynamic>? senderProfile;
+  final MessageStatus status;
+  final List<Map<String, dynamic>> reactions;
+  final List<String> readUserIds;
 
   Map<String, dynamic> toMap() {
     return {
@@ -93,6 +110,9 @@ class Message {
     bool? deleted,
     DateTime? createdAt,
     Map<String, dynamic>? senderProfile,
+    MessageStatus? status,
+    List<Map<String, dynamic>>? reactions,
+    List<String>? readUserIds,
   }) {
     return Message(
       id: id ?? this.id,
@@ -109,6 +129,9 @@ class Message {
       deleted: deleted ?? this.deleted,
       createdAt: createdAt ?? this.createdAt,
       senderProfile: senderProfile ?? this.senderProfile,
+      status: status ?? this.status,
+      reactions: reactions ?? this.reactions,
+      readUserIds: readUserIds ?? this.readUserIds,
     );
   }
 }

@@ -23,7 +23,7 @@ class ChatRepository {
   final SupabaseClient? _supabase;
   SupabaseClient? get supabase => _supabase;
 
-  Stream<List<Message>> watchDirectMessages(String otherUserId) {
+  Stream<List<Message>> watchDirectMessages(String otherUserId, {int limit = 100}) {
     final supabase = _supabase;
     if (supabase == null) return const Stream.empty();
 
@@ -36,11 +36,11 @@ class ChatRepository {
       try {
         final response = await supabase
             .from('messages')
-            .select()
+            .select('*, message_reactions(emoji, user_id), message_reads(user_id)')
             .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
             .filter('room_id', 'is', null)
             .order('created_at', ascending: false)
-            .limit(100);
+            .limit(limit);
         if (controller.isClosed) return;
         final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
         controller.add(list);
@@ -71,6 +71,16 @@ class ChatRepository {
           fetchMessages();
         }
       },
+    ).onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'message_reactions',
+      callback: (payload) => fetchMessages(),
+    ).onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'message_reads',
+      callback: (payload) => fetchMessages(),
     ).subscribe();
 
     controller.onCancel = () {
@@ -80,7 +90,7 @@ class ChatRepository {
     return controller.stream;
   }
 
-  Stream<List<Message>> watchRoomMessages(String roomId) {
+  Stream<List<Message>> watchRoomMessages(String roomId, {int limit = 100}) {
     final supabase = _supabase;
     if (supabase == null) return const Stream.empty();
 
@@ -90,10 +100,10 @@ class ChatRepository {
       try {
         final response = await supabase
             .from('messages')
-            .select()
+            .select('*, message_reactions(emoji, user_id), message_reads(user_id)')
             .eq('room_id', roomId)
             .order('created_at', ascending: false)
-            .limit(100);
+            .limit(limit);
         if (controller.isClosed) return;
         final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
         controller.add(list.reversed.toList());
@@ -119,6 +129,16 @@ class ChatRepository {
           fetchMessages();
         }
       },
+    ).onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'message_reactions',
+      callback: (payload) => fetchMessages(),
+    ).onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'message_reads',
+      callback: (payload) => fetchMessages(),
     ).subscribe();
 
     controller.onCancel = () {
