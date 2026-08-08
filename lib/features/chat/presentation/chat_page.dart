@@ -84,26 +84,28 @@ final _emojiRegex = emojiRegex;
 final _animatedEmojiMap = animatedEmojiMap;
 
 
-class ChatMessageLimitNotifier extends FamilyNotifier<int, String> {
+class ChatMessageLimitsNotifier extends Notifier<Map<String, int>> {
   @override
-  int build(String arg) {
-    return 30;
-  }
+  Map<String, int> build() => {};
 
-  void updateLimit(int newLimit) {
-    state = newLimit;
+  void incrementLimit(String userId) {
+    state = {
+      ...state,
+      userId: (state[userId] ?? 30) + 30,
+    };
   }
 }
 
-final chatMessageLimitProvider = NotifierProvider.family<ChatMessageLimitNotifier, int, String>(
-  ChatMessageLimitNotifier.new,
+final chatMessageLimitsProvider = NotifierProvider<ChatMessageLimitsNotifier, Map<String, int>>(
+  ChatMessageLimitsNotifier.new,
 );
 
 final chatMessagesProvider = StreamProvider.family<List<Message>, String>((
   ref,
   userId,
 ) {
-  final limit = ref.watch(chatMessageLimitProvider(userId));
+  final limits = ref.watch(chatMessageLimitsProvider);
+  final limit = limits[userId] ?? 30;
   final repository = ref.watch(chatRepositoryProvider);
   return repository.watchDirectMessages(userId, limit: limit);
 });
@@ -266,7 +268,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
           .select('read_at, messages!inner(sender_id, receiver_id)')
           .eq('user_id', widget.otherUserId)
           .eq('messages.sender_id', client.auth.currentUser!.id)
-          .order('read_at', descending: true)
+          .order('read_at', ascending: false)
           .limit(1)
           .maybeSingle();
 
@@ -381,8 +383,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
 
     if (_scrollController.position.maxScrollExtent > 0 &&
         currentScroll >= _scrollController.position.maxScrollExtent - 200) {
-      final currentLimit = ref.read(chatMessageLimitProvider(widget.otherUserId));
-      ref.read(chatMessageLimitProvider(widget.otherUserId).notifier).updateLimit(currentLimit + 30);
+      ref.read(chatMessageLimitsProvider.notifier).incrementLimit(widget.otherUserId);
     }
   }
 
@@ -1630,11 +1631,11 @@ class _MessageBubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
+    final chatPartnerId = message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
     final isRead = (otherUserLastReadAt != null && message.createdAt.isBefore(otherUserLastReadAt!)) ||
         message.readUserIds.contains(chatPartnerId);
     final themeSettings = ref.watch(themeServiceProvider);
-    final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
-    final chatPartnerId = message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
     final wallpaperPath = themeSettings.chatWallpapers[chatPartnerId] ?? themeSettings.globalWallpaperPath;
     final isGlassmorphism = wallpaperPath == 'preset_glassmorphism';
 
