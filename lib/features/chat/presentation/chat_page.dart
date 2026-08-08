@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:ui';
 import 'package:calcx/core/models/message.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -83,7 +84,20 @@ final _emojiRegex = emojiRegex;
 final _animatedEmojiMap = animatedEmojiMap;
 
 
-final chatMessageLimitProvider = StateProvider.family<int, String>((ref, userId) => 30);
+class ChatMessageLimitNotifier extends FamilyNotifier<int, String> {
+  @override
+  int build(String arg) {
+    return 30;
+  }
+
+  void updateLimit(int newLimit) {
+    state = newLimit;
+  }
+}
+
+final chatMessageLimitProvider = NotifierProvider.family<ChatMessageLimitNotifier, int, String>(
+  ChatMessageLimitNotifier.new,
+);
 
 final chatMessagesProvider = StreamProvider.family<List<Message>, String>((
   ref,
@@ -243,6 +257,33 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     super.dispose();
   }
 
+  Future<void> _fetchLastReadCursor() async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null) return;
+    try {
+      final response = await client
+          .from('message_reads')
+          .select('read_at, messages!inner(sender_id, receiver_id)')
+          .eq('user_id', widget.otherUserId)
+          .eq('messages.sender_id', client.auth.currentUser!.id)
+          .order('read_at', descending: true)
+          .limit(1)
+          .maybeSingle();
+
+      if (response != null && response['read_at'] != null) {
+        final readAtStr = response['read_at'] as String;
+        final readAt = DateTime.parse(readAtStr);
+        if (mounted) {
+          setState(() {
+            _otherUserLastReadAt = readAt;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching last read cursor: $e');
+    }
+  }
+
   Future<void> _startRecording() async {
     try {
       if (await _audioRecorder.hasPermission()) {
@@ -341,7 +382,7 @@ class _ChatPageState extends ConsumerState<ChatPage> {
     if (_scrollController.position.maxScrollExtent > 0 &&
         currentScroll >= _scrollController.position.maxScrollExtent - 200) {
       final currentLimit = ref.read(chatMessageLimitProvider(widget.otherUserId));
-      ref.read(chatMessageLimitProvider(widget.otherUserId).notifier).update((state) => state + 30);
+      ref.read(chatMessageLimitProvider(widget.otherUserId).notifier).updateLimit(currentLimit + 30);
     }
   }
 
@@ -1589,7 +1630,8 @@ class _MessageBubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final reactionsAsync = ref.watch(messageReactionsProvider(message.id));
+    final isRead = (otherUserLastReadAt != null && message.createdAt.isBefore(otherUserLastReadAt!)) ||
+        message.readUserIds.contains(chatPartnerId);
     final themeSettings = ref.watch(themeServiceProvider);
     final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
     final chatPartnerId = message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
@@ -1756,15 +1798,20 @@ class _MessageBubble extends ConsumerWidget {
               ],
               if (isMe) ...[
                 const SizedBox(width: 4),
-                ref.watch(messageReadStatusProvider(message.id)).when(
-                      data: (isRead) => Icon(
-                        isRead ? Icons.done_all_rounded : Icons.check_rounded,
-                        size: 13,
-                        color: isRead ? const Color(0xFF34B7F1) : Colors.white60,
-                      ),
-                      loading: () => const Icon(Icons.check_rounded, size: 13, color: Colors.white60),
-                      error: (_, __) => const Icon(Icons.check_rounded, size: 13, color: Colors.white60),
-                    ),
+                if (message.status == MessageStatus.sending)
+                  const SizedBox(
+                    width: 10,
+                    height: 10,
+                    child: CircularProgressIndicator(strokeWidth: 1, color: Colors.white60),
+                  )
+                else if (message.status == MessageStatus.failed)
+                  const Icon(Icons.error_outline_rounded, size: 13, color: Colors.redAccent)
+                else
+                  Icon(
+                    isRead ? Icons.done_all_rounded : Icons.check_rounded,
+                    size: 13,
+                    color: isRead ? const Color(0xFF34B7F1) : Colors.white60,
+                  ),
               ],
             ],
           ),
@@ -1789,27 +1836,24 @@ class _MessageBubble extends ConsumerWidget {
         children: [
           bubbleContent,
           // Render reactions list
-          reactionsAsync.when(
-            data: (reactions) {
-              if (reactions.isEmpty) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8.0, left: 12, right: 12),
-                child: Wrap(
-                  spacing: 4,
-                  children: reactions.toSet().map((emoji) {
-                    final count = reactions.where((e) => e == emoji).length;
+          if (message.reactions.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8.0, left: 12, right: 12),
+              child: Wrap(
+                spacing: 4,
+                children: () {
+                  final reactionsList = message.reactions.map((r) => r['emoji'] as String).toList();
+                  return reactionsList.toSet().map((emoji) {
+                    final count = reactionsList.where((e) => e == emoji).length;
                     return _AnimatedReactionChip(
                       emoji: emoji,
                       count: count,
                       messageId: message.id,
                     );
-                  }).toList(),
-                ),
-              );
-            },
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-          ),
+                  }).toList();
+                }(),
+              ),
+            ),
         ],
       ),
     );
