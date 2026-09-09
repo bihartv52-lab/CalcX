@@ -6,6 +6,26 @@ class AppTheme {
 
   static ThemeData themeForName(String name) => themeForSettings(ThemeSettings(themeName: name));
 
+  /// Resolves the primary color for a specific thread preset or fallback to active theme primary color.
+  static Color resolveThreadPrimaryColor({
+    String? threadPreset,
+    ThemeData? themeData,
+  }) {
+    if (threadPreset != null) {
+      final p = threadPreset.toLowerCase();
+      if (p.contains('emerald')) {
+        return const Color(0xFF00E676);
+      } else if (p.contains('crimson')) {
+        return const Color(0xFFFF1744);
+      } else if (p.contains('amoled')) {
+        return const Color(0xFF00DBE9);
+      } else if (p.contains('sunset')) {
+        return const Color(0xFFFF5722);
+      }
+    }
+    return themeData?.colorScheme.primary ?? const Color(0xFF00E676);
+  }
+
   static ThemeData themeForSettings(ThemeSettings settings) {
     final name = settings.themeName;
     Brightness brightness = Brightness.dark;

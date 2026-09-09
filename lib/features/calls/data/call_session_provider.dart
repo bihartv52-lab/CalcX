@@ -4,6 +4,7 @@ import 'package:calcx/core/models/call.dart';
 import 'package:calcx/core/services/livekit_token_service.dart';
 import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/livekit_call_service.dart';
+import 'package:calcx/features/calls/domain/call_participant.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -13,19 +14,30 @@ class CallSession {
   final LiveKitCallService callService;
   final DateTime startTime;
   bool isMuted;
-  bool isSpeakerOn;
   bool isVideoOn;
   bool isScreenSharing;
+  AudioOutputRoute activeAudioRoute;
+  bool isBluetoothAvailable;
+  Map<String, double> participantVolumes;
+  Map<String, bool> participantMuted;
+  List<CallParticipant> participants;
 
   CallSession({
     required this.call,
     required this.callService,
     required this.startTime,
     this.isMuted = false,
-    this.isSpeakerOn = true,
+    bool isSpeakerOn = true,
     this.isVideoOn = false,
     this.isScreenSharing = false,
-  });
+    AudioOutputRoute? activeAudioRoute,
+    this.isBluetoothAvailable = false,
+    this.participantVolumes = const {},
+    this.participantMuted = const {},
+    this.participants = const [],
+  }) : activeAudioRoute = activeAudioRoute ?? (isSpeakerOn ? AudioOutputRoute.deviceSpeaker : AudioOutputRoute.earSpeaker);
+
+  bool get isSpeakerOn => activeAudioRoute == AudioOutputRoute.deviceSpeaker;
 
   CallSession copyWith({
     Call? call,
@@ -35,15 +47,25 @@ class CallSession {
     bool? isSpeakerOn,
     bool? isVideoOn,
     bool? isScreenSharing,
+    AudioOutputRoute? activeAudioRoute,
+    bool? isBluetoothAvailable,
+    Map<String, double>? participantVolumes,
+    Map<String, bool>? participantMuted,
+    List<CallParticipant>? participants,
   }) {
+    final effectiveRoute = activeAudioRoute ?? (isSpeakerOn != null ? (isSpeakerOn ? AudioOutputRoute.deviceSpeaker : AudioOutputRoute.earSpeaker) : this.activeAudioRoute);
     return CallSession(
       call: call ?? this.call,
       callService: callService ?? this.callService,
       startTime: startTime ?? this.startTime,
       isMuted: isMuted ?? this.isMuted,
-      isSpeakerOn: isSpeakerOn ?? this.isSpeakerOn,
       isVideoOn: isVideoOn ?? this.isVideoOn,
       isScreenSharing: isScreenSharing ?? this.isScreenSharing,
+      activeAudioRoute: effectiveRoute,
+      isBluetoothAvailable: isBluetoothAvailable ?? this.isBluetoothAvailable,
+      participantVolumes: participantVolumes ?? Map.from(this.participantVolumes),
+      participantMuted: participantMuted ?? Map.from(this.participantMuted),
+      participants: participants ?? List.from(this.participants),
     );
   }
 }
@@ -88,11 +110,29 @@ class ActiveCallSessionNotifier extends Notifier<CallSession?> {
       }
     }
 
+    // Build initial participant list
+    final otherId = call.callerId == myId ? call.receiverId : call.callerId;
+    final otherProfile = call.callerId == myId ? call.receiverProfile : call.callerProfile;
+    final otherName = otherProfile?['display_name'] as String? ?? otherProfile?['username'] as String? ?? 'Participant';
+    final otherAvatar = otherProfile?['avatar_url'] as String?;
+
+    final initialParticipants = [
+      CallParticipant(
+        id: otherId,
+        displayName: otherName,
+        avatarUrl: otherAvatar,
+        volume: 1.0,
+      ),
+    ];
+
     state = CallSession(
       call: call,
       callService: callService,
       startTime: DateTime.now(),
       isVideoOn: call.isVideo,
+      activeAudioRoute: AudioOutputRoute.deviceSpeaker,
+      participants: initialParticipants,
+      participantVolumes: {otherId: 1.0},
     );
 
     // Watch status
@@ -133,17 +173,134 @@ class ActiveCallSessionNotifier extends Notifier<CallSession?> {
   Future<void> toggleSpeaker() async {
     final current = state;
     if (current == null) return;
-    final newState = !current.isSpeakerOn;
-    if (!kIsWeb) {
-      try {
-        await Hardware.instance.setSpeakerphoneOn(newState);
-        state = current.copyWith(isSpeakerOn: newState);
-      } catch (e) {
-        debugPrint('Error toggling speaker: $e');
-      }
-    } else {
-      state = current.copyWith(isSpeakerOn: newState);
+    final newRoute = current.isSpeakerOn ? AudioOutputRoute.earSpeaker : AudioOutputRoute.deviceSpeaker;
+    await selectAudioRoute(newRoute);
+  }
+
+  Future<void> selectAudioRoute(AudioOutputRoute route) async {
+    final current = state;
+    if (current == null) return;
+
+    AudioOutputRoute targetRoute = route;
+    if (route == AudioOutputRoute.bluetoothHeadset && !current.isBluetoothAvailable) {
+      targetRoute = AudioOutputRoute.deviceSpeaker;
     }
+
+    await current.callService.setAudioOutputRoute(targetRoute);
+    state = current.copyWith(activeAudioRoute: targetRoute);
+  }
+
+  Future<void> cycleAudioRoute() async {
+    final current = state;
+    if (current == null) return;
+
+    switch (current.activeAudioRoute) {
+      case AudioOutputRoute.deviceSpeaker:
+        await selectAudioRoute(AudioOutputRoute.earSpeaker);
+        break;
+      case AudioOutputRoute.earSpeaker:
+        await selectAudioRoute(
+          current.isBluetoothAvailable ? AudioOutputRoute.bluetoothHeadset : AudioOutputRoute.deviceSpeaker,
+        );
+        break;
+      case AudioOutputRoute.bluetoothHeadset:
+        await selectAudioRoute(AudioOutputRoute.deviceSpeaker);
+        break;
+    }
+  }
+
+  void setBluetoothAvailable(bool available) {
+    final current = state;
+    if (current == null) return;
+
+    AudioOutputRoute route = current.activeAudioRoute;
+    if (!available && route == AudioOutputRoute.bluetoothHeadset) {
+      route = AudioOutputRoute.deviceSpeaker;
+      current.callService.setAudioOutputRoute(AudioOutputRoute.deviceSpeaker);
+    }
+    state = current.copyWith(
+      isBluetoothAvailable: available,
+      activeAudioRoute: route,
+    );
+  }
+
+  Future<void> setParticipantVolume(String participantId, double volume) async {
+    final current = state;
+    if (current == null) return;
+
+    final clampedVolume = volume.clamp(0.0, 1.0);
+    final autoMuted = clampedVolume == 0.0;
+
+    final newVolumes = Map<String, double>.from(current.participantVolumes)..[participantId] = clampedVolume;
+    final newMuted = Map<String, bool>.from(current.participantMuted);
+    if (autoMuted) {
+      newMuted[participantId] = true;
+    } else if (newMuted[participantId] == true && clampedVolume > 0.0) {
+      newMuted[participantId] = false;
+    }
+
+    final updatedParticipants = current.participants.map((p) {
+      if (p.id == participantId) {
+        return p.copyWith(
+          volume: clampedVolume,
+          isMuted: autoMuted ? true : (p.isMuted && clampedVolume > 0.0 ? false : p.isMuted),
+        );
+      }
+      return p;
+    }).toList();
+
+    state = current.copyWith(
+      participantVolumes: newVolumes,
+      participantMuted: newMuted,
+      participants: updatedParticipants,
+    );
+
+    await current.callService.setParticipantVolume(participantId, clampedVolume);
+  }
+
+  Future<void> toggleParticipantMute(String participantId) async {
+    final current = state;
+    if (current == null) return;
+
+    final isCurrentlyMuted = current.participantMuted[participantId] ?? false;
+    final newMute = !isCurrentlyMuted;
+
+    final currentVol = current.participantVolumes[participantId] ?? 1.0;
+    final newVol = newMute ? 0.0 : (currentVol == 0.0 ? 0.8 : currentVol);
+
+    await setParticipantVolume(participantId, newVol);
+  }
+
+  void addParticipant(CallParticipant participant) {
+    final current = state;
+    if (current == null) return;
+    final exists = current.participants.any((p) => p.id == participant.id);
+    if (exists) return;
+
+    final updated = List<CallParticipant>.from(current.participants)..add(participant);
+    final newVolumes = Map<String, double>.from(current.participantVolumes)..[participant.id] = participant.volume;
+    final newMuted = Map<String, bool>.from(current.participantMuted)..[participant.id] = participant.isMuted;
+
+    state = current.copyWith(
+      participants: updated,
+      participantVolumes: newVolumes,
+      participantMuted: newMuted,
+    );
+  }
+
+  void removeParticipant(String participantId) {
+    final current = state;
+    if (current == null) return;
+
+    final updated = current.participants.where((p) => p.id != participantId).toList();
+    final newVolumes = Map<String, double>.from(current.participantVolumes)..remove(participantId);
+    final newMuted = Map<String, bool>.from(current.participantMuted)..remove(participantId);
+
+    state = current.copyWith(
+      participants: updated,
+      participantVolumes: newVolumes,
+      participantMuted: newMuted,
+    );
   }
 
   Future<void> toggleVideo() async {

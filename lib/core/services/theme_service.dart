@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:calcx/app/app_theme.dart';
 import 'package:calcx/core/services/secure_storage_service.dart';
 import 'package:calcx/core/utils/platform_file_helper.dart' as pf;
 import 'package:image_picker/image_picker.dart';
@@ -67,6 +68,15 @@ class ThemeSettings {
       wallpaperDim: (map['wallpaperDim'] as num?)?.toDouble() ?? 0.3,
       seedColorValue: map['seedColorValue'] as int?,
     );
+  }
+
+  String? getChatWallpaperPreset(String chatId) {
+    return chatWallpapers[chatId];
+  }
+
+  Color resolveThreadPresetColor(String? chatId, {ThemeData? themeData}) {
+    final preset = chatId != null ? chatWallpapers[chatId] : null;
+    return AppTheme.resolveThreadPrimaryColor(threadPreset: preset, themeData: themeData);
   }
 }
 

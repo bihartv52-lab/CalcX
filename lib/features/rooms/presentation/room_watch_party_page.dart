@@ -23,8 +23,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'package:calcx/features/auth/data/auth_repository.dart';
+
 import 'package:calcx/core/constants/app_routes.dart';
 import 'package:go_router/go_router.dart';
 
@@ -48,6 +51,8 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
   YoutubePlayerController? _youtubeController;
   BetterPlayerController? _betterPlayerController;
   InAppWebViewController? _webViewController;
+  RealtimeChannel? _realtimeBroadcastChannel;
+  bool _isPipMinimized = false;
   String _sourceType = 'youtube'; // 'youtube', 'url', 'local'
   String? _localFilePath;
   StreamSubscription? _roomSubscription;
@@ -104,10 +109,24 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
   }
 
   void _initializeControllerAndStreams() {
+    // Subscribe to Supabase Realtime Broadcast channel room:{roomId}:watch_party (<500ms latency)
+    final client = SupabaseService.clientOrNull;
+    if (client != null) {
+      _realtimeBroadcastChannel = client.channel('room:${widget.roomId}:watch_party');
+      _realtimeBroadcastChannel!.onBroadcast(
+        event: 'playback_sync',
+        callback: (payload) {
+          _handleRealtimeBroadcastPayload(payload);
+        },
+      );
+      _realtimeBroadcastChannel!.subscribe();
+    }
+
     _roomSubscription = ref.read(roomRepositoryProvider).watchRoom(widget.roomId).listen((roomData) {
       _lastRoomData = roomData;
       _onRoomDataUpdated(roomData);
     });
+
 
     // Listen for room reactions, kicks, and mutes
     final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
@@ -306,8 +325,88 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     }
   }
 
+  void _broadcastPlaybackEvent(String action, Duration position, String? sourceUrl) {
+    if (_realtimeBroadcastChannel != null) {
+      final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id ?? '';
+      final event = BroadcastSyncEvent(
+        action: action,
+        positionMs: position.inMilliseconds,
+        timestamp: DateTime.now().toUtc(),
+        hostId: myId,
+        sourceUrl: sourceUrl ?? _urlController.text,
+      );
+      _realtimeBroadcastChannel!.sendBroadcastMessage(
+        event: 'playback_sync',
+        payload: event.toMap(),
+      );
+    }
+  }
+
+  void _handleRealtimeBroadcastPayload(Map<String, dynamic> payload) {
+    final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
+    final event = BroadcastSyncEvent.fromMap(payload);
+
+    if (myId != null && event.hostId == myId) return;
+
+    final now = DateTime.now().toUtc();
+    final latency = event.calculateLatencyMs(now);
+
+    final targetPosition = event.action == 'play'
+        ? Duration(milliseconds: event.positionMs + (latency > 0 ? latency : 0))
+        : Duration(milliseconds: event.positionMs);
+
+    final isPlaying = event.action == 'play';
+
+    // Source URL auto-sync
+    if (event.sourceUrl != null &&
+        event.sourceUrl!.isNotEmpty &&
+        !_isSameSource(_currentSourceUrl, event.sourceUrl)) {
+      _currentSourceUrl = event.sourceUrl;
+      _urlController.text = event.sourceUrl!;
+      if (event.sourceUrl!.contains('youtube.com') || event.sourceUrl!.contains('youtu.be')) {
+        _loadYouTubeVideo(event.sourceUrl!);
+      } else {
+        _loadDirectUrl(event.sourceUrl!);
+      }
+    }
+
+    // Sync play/pause & drift correction (>500ms)
+    if (_sourceType == 'youtube' && _youtubeController != null) {
+      if (isPlaying && !_youtubeController!.value.isPlaying) {
+        _youtubeController!.play();
+      } else if (!isPlaying && _youtubeController!.value.isPlaying) {
+        _youtubeController!.pause();
+      }
+
+      final currentPos = _youtubeController!.value.position;
+      final diff = (currentPos - targetPosition).inMilliseconds.abs();
+      if (diff > 500) { // Drift correction threshold: 500ms
+        _youtubeController!.seekTo(targetPosition);
+      }
+    } else if (_betterPlayerController != null) {
+      final playerIsPlaying = _betterPlayerController!.isPlaying() ?? false;
+      if (isPlaying && !playerIsPlaying) {
+        _betterPlayerController!.play();
+      } else if (!isPlaying && playerIsPlaying) {
+        _betterPlayerController!.pause();
+      }
+
+      _betterPlayerController!.videoPlayerController?.position.then((currentPos) {
+        if (currentPos != null) {
+          final diff = (currentPos - targetPosition).inMilliseconds.abs();
+          if (diff > 500) { // Drift correction threshold: 500ms
+            _betterPlayerController!.seekTo(targetPosition);
+          }
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    if (_realtimeBroadcastChannel != null) {
+      SupabaseService.clientOrNull?.removeChannel(_realtimeBroadcastChannel!);
+    }
     _roomSubscription?.cancel();
     _messageSubscription?.cancel();
     _syncTimer?.cancel();
@@ -326,6 +425,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
     super.dispose();
   }
+
 
   Future<String> _getParticipantName(String userId) async {
     if (_profileNames.containsKey(userId)) {
@@ -639,7 +739,14 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           .read(roomRepositoryProvider)
           .updatePlayback(roomId: widget.roomId, state: state);
 
+      _broadcastPlaybackEvent(
+        isPlaying ? 'play' : 'pause',
+        position,
+        _sourceType == 'local' ? _localFilePath : _urlController.text,
+      );
+
       if (mounted && showSnackBar) {
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Video synced with room!')),
         );
@@ -1334,6 +1441,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
             ),
           ],
         ),
+        actions: const [
+          QuickPanicCalculatorButton(),
+        ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),

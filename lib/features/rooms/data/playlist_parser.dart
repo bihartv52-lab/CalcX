@@ -192,3 +192,21 @@ class PlaylistParser {
     return null;
   }
 }
+
+/// Helper class for YouTube URL parsing
+class YouTubeUrlParser {
+  static final RegExp _ytRegex = RegExp(
+    r'(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})',
+    caseSensitive: false,
+  );
+
+  static String? extractVideoId(String url) {
+    final match = _ytRegex.firstMatch(url.trim());
+    return match?.group(1);
+  }
+
+  static bool isYouTubeUrl(String url) {
+    return extractVideoId(url) != null;
+  }
+}
+

@@ -4,6 +4,7 @@ import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/calculator/data/passcode_repository.dart';
 import 'package:calcx/features/auth/data/auth_repository.dart';
+import 'package:calcx/features/profile/data/profile_repository.dart';
 import 'package:calcx/core/services/theme_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -281,6 +282,103 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
         ),
         const SizedBox(height: 18),
+        Consumer(
+          builder: (context, ref, child) {
+            final profileAsync = ref.watch(myProfileProvider);
+            return GlassCard(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: profileAsync.when(
+                data: (profile) {
+                  final displayName = profile?.displayName ?? 'User';
+                  final username = profile?.username ?? 'username';
+                  final avatarUrl = profile?.avatarUrl;
+                  final effectiveName = profile?.effectiveName ?? displayName;
+                  final bio = profile?.bio;
+
+                  final initials = displayName.trim().isNotEmpty
+                      ? (displayName.trim().split(RegExp(r'\s+')).take(2).map((e) => e[0]).join().toUpperCase())
+                      : username[0].toUpperCase();
+
+                  return Row(
+                    children: [
+                      ClipOval(
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          color: Theme.of(context).colorScheme.primaryContainer,
+                          child: avatarUrl != null && avatarUrl.isNotEmpty
+                              ? Image.network(
+                                  avatarUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => Center(
+                                    child: Text(
+                                      initials,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                                    ),
+                                  ),
+                                )
+                              : Center(
+                                  child: Text(
+                                    initials,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                                  ),
+                                ),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              effectiveName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              '@$username',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.7),
+                              ),
+                            ),
+                            if (bio != null && bio.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Text(
+                                  bio,
+                                  style: const TextStyle(fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        onPressed: () {
+                          context.push(AppRoutes.profileEdit);
+                        },
+                        icon: const Icon(Icons.edit_rounded, size: 16),
+                        label: const Text('Edit'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (err, stack) => Text('Profile error: $err'),
+              ),
+            );
+          },
+        ),
         GlassCard(
           margin: const EdgeInsets.only(bottom: 12),
           child: Column(
@@ -481,6 +579,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     ),
                     items: const [
                       DropdownMenuItem(value: 'sunset', child: Text('Sunset (Orange & Rose)')),
+                      DropdownMenuItem(value: 'emerald', child: Text('Emerald (Green & Mint)')),
                       DropdownMenuItem(value: 'crimson', child: Text('Crimson (Red & Gold)')),
                       DropdownMenuItem(value: 'light', child: Text('Material Light Mode')),
                       DropdownMenuItem(value: 'amoled', child: Text('AMOLED Deep Black')),

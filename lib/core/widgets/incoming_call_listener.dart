@@ -6,6 +6,7 @@ import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
 import 'package:calcx/features/calls/presentation/active_call_page.dart';
 import 'package:calcx/features/calls/presentation/incoming_call_page.dart';
+import 'package:calcx/features/calls/presentation/widgets/sound_control_panel.dart';
 import 'package:calcx/features/friends/presentation/friends_page.dart';
 import 'package:calcx/features/chat/presentation/chat_list_page.dart';
 import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
@@ -1003,129 +1004,76 @@ class _PulsingIndicatorState extends State<_PulsingIndicator> with SingleTickerP
 void showSoundControlSheet(BuildContext context, WidgetRef ref) {
   showModalBottomSheet(
     context: context,
-    backgroundColor: const Color(0xFF1E1E1E),
+    isScrollControlled: true,
+    backgroundColor: const Color(0xFF161616),
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (context) {
       return Consumer(
         builder: (context, ref, _) {
-          final session = ref.watch(activeCallSessionProvider);
           final mediaVolume = ref.watch(watchPartyVolumeProvider);
           final isMediaMuted = ref.watch(watchPartyMutedProvider);
 
-          return Padding(
-            padding: const EdgeInsets.all(20.0),
+          return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Sound Control Panel',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                // Call Speakerphone Control
-                if (session != null) ...[
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                const SoundControlPanel(),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 8.0),
+                  child: Column(
                     children: [
+                      const Divider(color: Colors.white10),
                       Row(
                         children: [
-                          Icon(
-                            session.isSpeakerOn ? Icons.volume_up_rounded : Icons.volume_down_rounded,
-                            color: Colors.white70,
+                          IconButton(
+                            icon: Icon(
+                              isMediaMuted ? Icons.music_off_rounded : Icons.music_note_rounded,
+                              color: isMediaMuted ? Colors.redAccent : Colors.white70,
+                            ),
+                            onPressed: () {
+                              ref.read(watchPartyMutedProvider.notifier).toggle();
+                            },
                           ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Call Speakerphone',
-                                style: TextStyle(color: Colors.white, fontSize: 14),
-                              ),
-                              Text(
-                                session.isSpeakerOn ? 'On (Loudspeaker)' : 'Off (Earpiece/Bluetooth)',
-                                style: const TextStyle(color: Colors.white38, fontSize: 11),
-                              ),
-                            ],
+                          const SizedBox(width: 4),
+                          const Expanded(
+                            child: Text(
+                              'Watch Party Media Volume',
+                              style: TextStyle(color: Colors.white, fontSize: 14),
+                            ),
+                          ),
+                          Text(
+                            isMediaMuted ? 'Muted' : '${(mediaVolume * 100).toInt()}%',
+                            style: const TextStyle(color: Colors.white54, fontSize: 12),
                           ),
                         ],
                       ),
-                      Switch(
-                        value: session.isSpeakerOn,
-                        onChanged: (_) {
-                          ref.read(activeCallSessionProvider.notifier).toggleSpeaker();
-                        },
-                        activeColor: Theme.of(context).colorScheme.primary,
+                      Row(
+                        children: [
+                          const Icon(Icons.volume_down_rounded, color: Colors.white30, size: 16),
+                          Expanded(
+                            child: Slider(
+                              value: isMediaMuted ? 0.0 : mediaVolume,
+                              min: 0.0,
+                              max: 1.0,
+                              onChanged: (val) {
+                                if (isMediaMuted && val > 0.0) {
+                                  ref.read(watchPartyMutedProvider.notifier).toggle();
+                                }
+                                ref.read(watchPartyVolumeProvider.notifier).setVolume(val);
+                              },
+                              activeColor: Theme.of(context).colorScheme.primary,
+                              inactiveColor: Colors.white12,
+                            ),
+                          ),
+                          const Icon(Icons.volume_up_rounded, color: Colors.white30, size: 16),
+                        ],
                       ),
+                      const SizedBox(height: 16),
                     ],
                   ),
-                  const Divider(color: Colors.white10, height: 24),
-                ],
-                // Watch Party Media Volume Slider
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        isMediaMuted ? Icons.music_off_rounded : Icons.music_note_rounded,
-                        color: isMediaMuted ? Colors.redAccent : Colors.white70,
-                      ),
-                      onPressed: () {
-                        ref.read(watchPartyMutedProvider.notifier).toggle();
-                      },
-                    ),
-                    const SizedBox(width: 4),
-                    const Expanded(
-                      child: Text(
-                        'Watch Party Media Volume',
-                        style: TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                    ),
-                    Text(
-                      isMediaMuted ? 'Muted' : '${(mediaVolume * 100).toInt()}%',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
-                    ),
-                  ],
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.volume_down_rounded, color: Colors.white30, size: 16),
-                    Expanded(
-                      child: Slider(
-                        value: isMediaMuted ? 0.0 : mediaVolume,
-                        min: 0.0,
-                        max: 1.0,
-                        onChanged: (val) {
-                          if (isMediaMuted && val > 0.0) {
-                            ref.read(watchPartyMutedProvider.notifier).toggle();
-                          }
-                          ref.read(watchPartyVolumeProvider.notifier).setVolume(val);
-                        },
-                        activeColor: Theme.of(context).colorScheme.primary,
-                        inactiveColor: Colors.white12,
-                      ),
-                    ),
-                    const Icon(Icons.volume_up_rounded, color: Colors.white30, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 20),
               ],
             ),
           );

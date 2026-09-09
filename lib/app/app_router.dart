@@ -3,6 +3,7 @@ import 'package:calcx/features/auth/presentation/auth_page.dart';
 import 'package:calcx/features/calculator/presentation/calculator_page.dart';
 import 'package:calcx/features/chat/presentation/chat_page.dart';
 import 'package:calcx/features/home/presentation/home_shell.dart';
+import 'package:calcx/features/profile/presentation/profile_edit_page.dart';
 import 'package:calcx/features/rooms/presentation/room_detail_page.dart';
 import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:calcx/features/rooms/presentation/room_watch_party_page.dart';
@@ -87,6 +88,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final roomName = state.uri.queryParameters['name'] ?? 'Voice Call';
           return RoomVoiceCallPage(roomId: roomId, roomName: roomName);
         },
+      ),
+      GoRoute(
+        path: AppRoutes.profileEdit,
+        name: 'profile_edit',
+        builder: (context, state) => const ProfileEditPage(),
       ),
     ],
   );

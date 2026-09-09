@@ -20,3 +20,10 @@ ios/Flutter/Flutter.podspec
 *.log
 hs_err_pid*
 replay_pid*
+
+# Generated / Cache files
+android/.kotlin/
+.agents/
+*.apk
+CalcX.apk
+

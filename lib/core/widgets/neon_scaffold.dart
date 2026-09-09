@@ -16,23 +16,27 @@ class NeonScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     return Scaffold(
       extendBody: true,
       appBar: appBar,
       bottomNavigationBar: bottomNavigationBar,
       floatingActionButton: floatingActionButton,
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          color: Color(0xFF050505),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF131313),
-              Color(0xFF080808),
-              Color(0xFF050505),
-            ],
-          ),
+        decoration: BoxDecoration(
+          color: isLight ? const Color(0xFFF6F5FA) : const Color(0xFF050505),
+          gradient: isLight
+              ? null
+              : const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Color(0xFF131313),
+                    Color(0xFF080808),
+                    Color(0xFF050505),
+                  ],
+                ),
         ),
         child: SafeArea(child: child),
       ),

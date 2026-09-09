@@ -182,4 +182,25 @@ class RoomRepository {
         .order('joined_at');
     return List<Map<String, dynamic>>.from(response);
   }
+
+  Future<void> deleteRoom(String roomId) async {
+    try {
+      await _client.from('messages').delete().eq('room_id', roomId);
+    } catch (_) {}
+    try {
+      await _client.from('room_participants').delete().eq('room_id', roomId);
+    } catch (_) {}
+    await _client.from('rooms').delete().eq('id', roomId);
+  }
+
+  Future<void> deleteAllRooms() async {
+    try {
+      await _client.from('messages').delete().not('room_id', 'is', null);
+    } catch (_) {}
+    try {
+      await _client.from('room_participants').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    } catch (_) {}
+    await _client.from('rooms').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+  }
 }
+

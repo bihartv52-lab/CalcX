@@ -1,4 +1,4 @@
-import 'package:calcx/core/widgets/glass_card.dart';
+
 import 'package:calcx/features/rooms/data/room_repository.dart';
 import 'package:calcx/features/rooms/presentation/room_chat_page.dart';
 import 'package:calcx/features/rooms/presentation/room_voice_call_page.dart';
@@ -202,7 +202,16 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
             padding: const EdgeInsets.all(18),
             children: [
               // Room Header
-              GlassCard(
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.light ? Colors.black12 : Colors.white10,
+                    width: 0.5,
+                  ),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -259,7 +268,16 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
 
               // Room Features
               if (_isJoined) ...[
-                GlassCard(
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).brightness == Brightness.light ? Colors.black12 : Colors.white10,
+                      width: 0.5,
+                    ),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -314,7 +332,16 @@ class _RoomDetailPageState extends ConsumerState<RoomDetailPage> {
                 const SizedBox(height: 16),
 
                 // Participants
-                GlassCard(
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: Theme.of(context).brightness == Brightness.light ? Colors.black12 : Colors.white10,
+                      width: 0.5,
+                    ),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [

@@ -61,4 +61,85 @@ class PlaybackStateSnapshot {
       'track_thumbnail': trackThumbnail,
     };
   }
+
+  bool isSyncDriftExceeded(Duration localPosition, {int thresholdMs = 500}) {
+    final target = estimatedLivePosition;
+    final diff = (localPosition - target).inMilliseconds.abs();
+    return diff > thresholdMs;
+  }
 }
+
+/// Helper model for Supabase Realtime Broadcast Playback Synchronization (R2)
+class BroadcastSyncEvent {
+  final String action; // 'play', 'pause', 'seek'
+  final int positionMs;
+  final DateTime timestamp;
+  final String hostId;
+  final String? sourceUrl;
+
+  const BroadcastSyncEvent({
+    required this.action,
+    required this.positionMs,
+    required this.timestamp,
+    required this.hostId,
+    this.sourceUrl,
+  });
+
+  factory BroadcastSyncEvent.fromMap(Map<String, dynamic> map) {
+    return BroadcastSyncEvent(
+      action: map['action'] as String? ?? 'pause',
+      positionMs: map['positionMs'] as int? ?? 0,
+      timestamp: DateTime.tryParse(map['timestamp'] as String? ?? '') ?? DateTime.now().toUtc(),
+      hostId: map['hostId'] as String? ?? '',
+      sourceUrl: map['sourceUrl'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'action': action,
+      'positionMs': positionMs,
+      'timestamp': timestamp.toUtc().toIso8601String(),
+      'hostId': hostId,
+      'sourceUrl': sourceUrl,
+    };
+  }
+
+  int calculateLatencyMs(DateTime receivedAt) {
+    return receivedAt.difference(timestamp.toUtc()).inMilliseconds;
+  }
+}
+
+/// Synchronized Watch Party Engine to verify broadcast sync state
+class WatchPartySyncEngine {
+  PlaybackStateSnapshot _currentState = PlaybackStateSnapshot(
+    position: Duration.zero,
+    isPlaying: false,
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(0),
+  );
+
+  PlaybackStateSnapshot get currentState => _currentState;
+
+  void handleBroadcastEvent(BroadcastSyncEvent event, {DateTime? receivedAt}) {
+    final now = receivedAt ?? DateTime.now().toUtc();
+    final latency = event.calculateLatencyMs(now);
+
+    final adjustedPosition = event.action == 'play'
+        ? Duration(milliseconds: event.positionMs + (latency > 0 ? latency : 0))
+        : Duration(milliseconds: event.positionMs);
+
+    _currentState = PlaybackStateSnapshot(
+      position: adjustedPosition,
+      isPlaying: event.action == 'play',
+      updatedAt: now,
+      sourceUrl: event.sourceUrl ?? _currentState.sourceUrl,
+      hostId: event.hostId,
+    );
+  }
+
+  bool isSyncDriftExceeded(Duration localPosition, Duration targetPosition, {int thresholdMs = 500}) {
+    final diff = (localPosition - targetPosition).inMilliseconds.abs();
+    return diff > thresholdMs;
+  }
+}
+

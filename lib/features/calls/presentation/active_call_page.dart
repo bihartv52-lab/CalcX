@@ -3,11 +3,14 @@ import 'package:calcx/core/models/call.dart';
 import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
+import 'package:calcx/features/calls/domain/call_participant.dart';
+import 'package:calcx/features/calls/presentation/widgets/sound_control_panel.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
 import 'package:calcx/features/chat/presentation/chat_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 
 class ActiveCallPage extends ConsumerStatefulWidget {
   const ActiveCallPage({super.key, required this.call});
@@ -444,6 +447,7 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
                         ],
                       ),
                     ),
+                    const QuickPanicCalculatorButton(),
                     IconButton(
                       icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: 22),
                       tooltip: 'Minimize to Picture-in-Picture (PiP)',

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 
 class RoomVoiceCallPage extends ConsumerStatefulWidget {
   const RoomVoiceCallPage({
@@ -174,6 +175,9 @@ class _RoomVoiceCallPageState extends ConsumerState<RoomVoiceCallPage> {
             ),
           ],
         ),
+        actions: const [
+          QuickPanicCalculatorButton(),
+        ],
       ),
       body: _isConnecting
           ? const Center(

@@ -1,7 +1,7 @@
 import 'package:calcx/core/widgets/glass_card.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
-import 'package:calcx/features/rooms/presentation/room_detail_page.dart';
 import 'package:calcx/core/services/supabase_service.dart';
+import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -47,6 +47,14 @@ class RoomsPage extends ConsumerWidget {
                 ],
               ),
             ),
+            const QuickPanicCalculatorButton(),
+            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Delete all groups',
+              icon: const Icon(Icons.delete_sweep_rounded, color: Colors.redAccent),
+              onPressed: () => _confirmDeleteAllRooms(context, ref),
+            ),
+            const SizedBox(width: 4),
             IconButton.filled(
               tooltip: activeTab == 0 ? 'Create party room' : 'Create game room',
               onPressed: () => _showCreateRoomDialog(context, ref),
@@ -312,6 +320,44 @@ class RoomsPage extends ConsumerWidget {
       ),
     );
   }
+
+  Future<void> _confirmDeleteAllRooms(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete All Groups?'),
+        content: const Text('This will permanently delete all existing rooms, participants, and room messages for everyone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      try {
+        await ref.read(roomRepositoryProvider).deleteAllRooms();
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('All groups and rooms have been deleted.')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to delete groups: $e')),
+          );
+        }
+      }
+    }
+  }
 }
 
 class _RoomCard extends ConsumerWidget {
@@ -371,6 +417,13 @@ class _RoomCard extends ConsumerWidget {
                       ],
                     ),
                   );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.white54),
+                tooltip: 'Delete room',
+                onPressed: () async {
+                  await ref.read(roomRepositoryProvider).deleteRoom(roomId);
                 },
               ),
             ],

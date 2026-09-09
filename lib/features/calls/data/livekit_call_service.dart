@@ -1,4 +1,5 @@
 import 'package:calcx/app/app_env.dart';
+import 'package:calcx/features/calls/domain/call_participant.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -133,4 +134,73 @@ class LiveKitCallService {
       await localParticipant.setScreenShareEnabled(!isEnabled);
     }
   }
+
+  Future<void> setAudioOutputRoute(AudioOutputRoute route) async {
+    if (kIsWeb) return;
+    try {
+      switch (route) {
+        case AudioOutputRoute.deviceSpeaker:
+          await Hardware.instance.setSpeakerphoneOn(true);
+          break;
+        case AudioOutputRoute.earSpeaker:
+          await Hardware.instance.setSpeakerphoneOn(false);
+          break;
+        case AudioOutputRoute.bluetoothHeadset:
+          try {
+            final devices = await Hardware.instance.enumerateDevices(type: 'audiooutput');
+            final btDevice = devices.firstWhere(
+              (d) {
+                final label = d.label.toLowerCase();
+                return label.contains('bluetooth') || label.contains('headset') || label.contains('hands-free');
+              },
+              orElse: () => devices.isNotEmpty ? devices.first : const MediaDevice('', 'bluetooth', 'audiooutput', ''),
+            );
+            if (btDevice.deviceId.isNotEmpty) {
+              await Hardware.instance.selectAudioOutput(btDevice);
+            } else {
+              await Hardware.instance.setSpeakerphoneOn(false);
+            }
+          } catch (_) {
+            await Hardware.instance.setSpeakerphoneOn(false);
+          }
+          break;
+      }
+    } catch (e) {
+      debugPrint('Error setting audio output route $route: $e');
+    }
+  }
+
+  Future<void> setParticipantVolume(String participantId, double volume) async {
+    final clamped = volume.clamp(0.0, 1.0);
+    final room = _room;
+    if (room == null) return;
+
+    try {
+      RemoteParticipant? participant;
+      for (final p in room.remoteParticipants.values) {
+        if (p.identity == participantId || p.sid == participantId) {
+          participant = p;
+          break;
+        }
+      }
+      participant ??= room.remoteParticipants[participantId];
+
+      if (participant != null) {
+        for (final pub in participant.audioTrackPublications) {
+          final track = pub.track;
+          if (track != null) {
+            try {
+              (track as dynamic).setVolume?.call(clamped);
+            } catch (_) {}
+            try {
+              track.mediaStreamTrack.enabled = clamped > 0.0;
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error setting track volume for $participantId: $e');
+    }
+  }
 }
+

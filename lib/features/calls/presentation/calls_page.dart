@@ -1,5 +1,5 @@
 import 'package:calcx/core/models/call.dart';
-import 'package:calcx/core/widgets/glass_card.dart';
+
 import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
 import 'package:calcx/features/calls/presentation/call_history_page.dart';
@@ -34,6 +34,8 @@ class _CallsPageState extends ConsumerState<CallsPage> {
   @override
   Widget build(BuildContext context) {
     final incomingCallsAsync = ref.watch(incomingCallsProvider);
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final subColor = isLight ? Colors.black54 : Colors.white70;
 
     // Show incoming call screen if there's an incoming call
     incomingCallsAsync.whenData((calls) {
@@ -73,7 +75,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                     const SizedBox(height: 6),
                     Text(
                       'LiveKit call history, missed calls, and quick actions.',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.66)),
+                      style: TextStyle(color: subColor),
                     ),
                   ],
                 ),
@@ -142,7 +144,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                         Icon(
                           Icons.call_end_rounded,
                           size: 64,
-                          color: Colors.white.withValues(alpha: 0.3),
+                           color: isLight ? Colors.black38 : Colors.white30,
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -155,7 +157,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                         Text(
                           'Start calling your friends to see your call history here!',
                           style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.6),
+                             color: subColor,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -185,8 +187,17 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                     status = call.status;
                   }
 
-                  return GlassCard(
+                  return Container(
                     margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Theme.of(context).brightness == Brightness.light ? Colors.black12 : Colors.white10,
+                        width: 0.5,
+                      ),
+                    ),
                     child: Row(
                       children: [
                         Icon(
@@ -204,9 +215,9 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                               ),
                               Text(
                                 '${call.callType} - $status',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.66),
-                                ),
+                                  style: TextStyle(
+                                    color: subColor,
+                                  ),
                               ),
                             ],
                           ),

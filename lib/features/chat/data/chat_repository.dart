@@ -9,12 +9,166 @@ final chatRepositoryProvider = Provider<ChatRepository>((ref) {
   return ChatRepository(SupabaseService.clientOrNull);
 });
 
-final typingIndicatorProvider = StreamProvider.family<bool, String>((
-  ref,
-  userId,
-) {
-  final repository = ref.watch(chatRepositoryProvider);
-  return repository.watchTyping(userId);
+// A provider that keeps track of active typing states mapping: partnerUserId -> isTyping
+final typingStatesProvider = NotifierProvider<TypingStatesNotifier, Map<String, bool>>(
+  TypingStatesNotifier.new,
+);
+
+class TypingStatesNotifier extends Notifier<Map<String, bool>> {
+  RealtimeChannel? _myBroadcastChannel;
+  final Map<String, Timer> _expiryTimers = {};
+
+  @override
+  Map<String, bool> build() {
+    final supabase = SupabaseService.clientOrNull;
+    if (supabase == null) return {};
+
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return {};
+
+    // Listen to typing broadcasts sent directly to us
+    _myBroadcastChannel = supabase.channel('typing_broadcast_$myId');
+    _myBroadcastChannel!.onBroadcast(
+      event: 'typing',
+      callback: (payload) {
+        final senderId = payload['senderId'] as String?;
+        final isTyping = payload['isTyping'] as bool? ?? false;
+        if (senderId != null) {
+          _updateTypingState(senderId, isTyping);
+        }
+      },
+    );
+    _myBroadcastChannel!.subscribe();
+
+    ref.onDispose(() {
+      if (_myBroadcastChannel != null) {
+        supabase.removeChannel(_myBroadcastChannel!);
+      }
+      for (final timer in _expiryTimers.values) {
+        timer.cancel();
+      }
+    });
+
+    return {};
+  }
+
+  void _updateTypingState(String senderId, bool isTyping) {
+    _expiryTimers[senderId]?.cancel();
+    if (isTyping) {
+      state = {...state, senderId: true};
+      // Auto expire typing state after 4 seconds as a fallback
+      _expiryTimers[senderId] = Timer(const Duration(seconds: 4), () {
+        state = {...state, senderId: false};
+      });
+    } else {
+      state = {...state, senderId: false};
+    }
+  }
+}
+
+// Auto-dispose sender channel provider.
+// When ChatPage is closed, it's disposed and channel is unsubscribed.
+final typingSendChannelProvider = Provider.autoDispose.family<RealtimeChannel?, String>((ref, targetUserId) {
+  final supabase = SupabaseService.clientOrNull;
+  if (supabase == null) return null;
+
+  final channel = supabase.channel('typing_broadcast_$targetUserId');
+  channel.subscribe();
+
+  ref.onDispose(() {
+    supabase.removeChannel(channel);
+  });
+
+  return channel;
+});
+
+// Group Typing Indicators mapping: roomId -> (Map of typing users: senderId -> displayName)
+final roomTypingStatesProvider = StreamProvider.family<Map<String, String>, String>((ref, roomId) {
+  final controller = StreamController<Map<String, String>>();
+  final supabase = SupabaseService.clientOrNull;
+  if (supabase == null) {
+    controller.add({});
+    return controller.stream;
+  }
+
+  final Map<String, String> currentTyping = {};
+  final Map<String, Timer> expiryTimers = {};
+
+  final channel = supabase.channel('typing_room_$roomId');
+  channel.onBroadcast(
+    event: 'typing',
+    callback: (payload) {
+      final senderId = payload['senderId'] as String?;
+      final senderName = payload['senderName'] as String?;
+      final isTyping = payload['isTyping'] as bool? ?? false;
+      if (senderId != null && senderName != null) {
+        expiryTimers[senderId]?.cancel();
+        if (isTyping) {
+          currentTyping[senderId] = senderName;
+          expiryTimers[senderId] = Timer(const Duration(seconds: 4), () {
+            currentTyping.remove(senderId);
+            if (!controller.isClosed) {
+              controller.add(Map<String, String>.from(currentTyping));
+            }
+          });
+        } else {
+          currentTyping.remove(senderId);
+        }
+        if (!controller.isClosed) {
+          controller.add(Map<String, String>.from(currentTyping));
+        }
+      }
+    },
+  );
+  channel.subscribe();
+
+  controller.add({});
+
+  ref.onDispose(() {
+    supabase.removeChannel(channel);
+    for (final timer in expiryTimers.values) {
+      timer.cancel();
+    }
+    controller.close();
+  });
+
+  return controller.stream;
+});
+
+final roomTypingSendChannelProvider = Provider.autoDispose.family<RealtimeChannel?, String>((ref, roomId) {
+  final supabase = SupabaseService.clientOrNull;
+  if (supabase == null) return null;
+
+  final channel = supabase.channel('typing_room_$roomId');
+  channel.subscribe();
+
+  ref.onDispose(() {
+    supabase.removeChannel(channel);
+  });
+
+  return channel;
+});
+
+// Redefine typingIndicatorProvider as a StreamProvider wrapping typingStatesProvider
+final typingIndicatorProvider = StreamProvider.family<bool, String>((ref, userId) {
+  final controller = StreamController<bool>();
+  
+  // Watch the changes in typingStatesProvider and push to controller
+  ref.listen<Map<String, bool>>(typingStatesProvider, (previous, next) {
+    if (!controller.isClosed) {
+      controller.add(next[userId] ?? false);
+    }
+  }, fireImmediately: true);
+
+  // We push initial value
+  final initialMap = ref.read(typingStatesProvider);
+  controller.add(initialMap[userId] ?? false);
+
+  ref.onDispose(() {
+    controller.close();
+  });
+
+  return controller.stream;
 });
 
 class ChatRepository {
@@ -539,5 +693,96 @@ class ChatRepository {
         .eq('message_id', messageId)
         .eq('user_id', myId)
         .eq('emoji', emoji);
+  }
+
+  /// Search direct messages using Supabase .ilike filter
+  Future<List<Message>> searchDirectMessages(String otherUserId, String query) async {
+    final supabase = _supabase;
+    if (supabase == null || query.trim().isEmpty) return [];
+
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return [];
+
+    try {
+      final response = await supabase
+          .from('messages')
+          .select('*, message_reactions(emoji, user_id), message_reads(user_id)')
+          .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
+          .filter('room_id', 'is', null)
+          .ilike('content', '%${query.trim()}%')
+          .order('created_at', ascending: false);
+
+      return (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('Error searching direct messages: $e');
+      return [];
+    }
+  }
+
+  /// Search room messages using Supabase .ilike filter
+  Future<List<Message>> searchRoomMessages(String roomId, String query) async {
+    final supabase = _supabase;
+    if (supabase == null || query.trim().isEmpty) return [];
+
+    try {
+      final response = await supabase
+          .from('messages')
+          .select('*, message_reactions(emoji, user_id), message_reads(user_id)')
+          .eq('room_id', roomId)
+          .ilike('content', '%${query.trim()}%')
+          .order('created_at', ascending: false);
+
+      return (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
+    } catch (e) {
+      debugPrint('Error searching room messages: $e');
+      return [];
+    }
+  }
+
+  /// Batch insert forwarded messages to target direct chats or rooms
+  Future<void> forwardMessages({
+    required List<Message> messages,
+    List<String> targetReceiverIds = const [],
+    List<String> targetRoomIds = const [],
+  }) async {
+    final supabase = _supabase;
+    if (supabase == null || messages.isEmpty) return;
+
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    final inserts = <Map<String, dynamic>>[];
+    final now = DateTime.now().toIso8601String();
+
+    for (final message in messages) {
+      for (final receiverId in targetReceiverIds) {
+        inserts.add({
+          'sender_id': myId,
+          'receiver_id': receiverId,
+          'room_id': null,
+          'content': message.content,
+          'message_type': message.messageType,
+          'media_url': message.mediaUrl,
+          'media_thumbnail': message.mediaThumbnail,
+          'created_at': now,
+        });
+      }
+      for (final roomId in targetRoomIds) {
+        inserts.add({
+          'sender_id': myId,
+          'receiver_id': null,
+          'room_id': roomId,
+          'content': message.content,
+          'message_type': message.messageType,
+          'media_url': message.mediaUrl,
+          'media_thumbnail': message.mediaThumbnail,
+          'created_at': now,
+        });
+      }
+    }
+
+    if (inserts.isNotEmpty) {
+      await supabase.from('messages').insert(inserts);
+    }
   }
 }

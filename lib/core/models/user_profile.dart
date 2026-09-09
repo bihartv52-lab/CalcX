@@ -3,6 +3,7 @@ class UserProfile {
     required this.id,
     required this.username,
     required this.displayName,
+    this.nickname,
     this.avatarUrl,
     this.bio,
     this.status = 'offline',
@@ -17,6 +18,7 @@ class UserProfile {
       id: map['id'] as String,
       username: map['username'] as String? ?? '',
       displayName: map['display_name'] as String? ?? '',
+      nickname: map['nickname'] as String?,
       avatarUrl: map['avatar_url'] as String?,
       bio: map['bio'] as String?,
       status: map['status'] as String? ?? 'offline',
@@ -36,6 +38,7 @@ class UserProfile {
   final String id;
   final String username;
   final String displayName;
+  final String? nickname;
   final String? avatarUrl;
   final String? bio;
   final String status; // online, offline, away, busy
@@ -48,6 +51,46 @@ class UserProfile {
   bool get isAway => status == 'away';
   bool get isBusy => status == 'busy';
   bool get isOffline => status == 'offline';
+
+  String get effectiveName {
+    if (nickname != null && nickname!.trim().isNotEmpty) {
+      return nickname!.trim();
+    }
+    if (displayName.trim().isNotEmpty) {
+      return displayName.trim();
+    }
+    return username;
+  }
+
+  static String? validateDisplayName(String? name) {
+    if (name == null || name.trim().isEmpty) {
+      return 'Display name cannot be empty';
+    }
+    final trimmed = name.trim();
+    if (trimmed.length < 2) {
+      return 'Display name must be at least 2 characters';
+    }
+    if (trimmed.length > 50) {
+      return 'Display name must not exceed 50 characters';
+    }
+    return null;
+  }
+
+  static String? validateBio(String? bio) {
+    if (bio == null) return null;
+    if (bio.length > 160) {
+      return 'Bio must not exceed 160 characters';
+    }
+    return null;
+  }
+
+  static String? validateNickname(String? nickname) {
+    if (nickname == null) return null;
+    if (nickname.length > 30) {
+      return 'Nickname must not exceed 30 characters';
+    }
+    return null;
+  }
 
   String getPresenceText() {
     if (isOnline) {
@@ -79,6 +122,7 @@ class UserProfile {
       'id': id,
       'username': username,
       'display_name': displayName,
+      'nickname': nickname,
       'avatar_url': avatarUrl,
       'bio': bio,
       'status': status,
@@ -93,6 +137,7 @@ class UserProfile {
     String? id,
     String? username,
     String? displayName,
+    String? nickname,
     String? avatarUrl,
     String? bio,
     String? status,
@@ -105,6 +150,7 @@ class UserProfile {
       id: id ?? this.id,
       username: username ?? this.username,
       displayName: displayName ?? this.displayName,
+      nickname: nickname ?? this.nickname,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       bio: bio ?? this.bio,
       status: status ?? this.status,
@@ -115,3 +161,4 @@ class UserProfile {
     );
   }
 }
+

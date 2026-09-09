@@ -1,7 +1,7 @@
 name: calcx
 description: Calculator-first secure social Flutter app foundation.
 publish_to: "none"
-version: 0.1.0+1
+version: 1.0.0+1
 
 environment:
   sdk: ">=3.11.0 <4.0.0"
@@ -57,3 +57,7 @@ flutter_launcher_icons:
   image_path: "assets/images/app_icon.png"
   adaptive_icon_background: "#1a1a1a"
   adaptive_icon_foreground: "assets/images/app_icon.png"
+
+dependency_overrides:
+  record_platform_interface: 1.2.0
+
