@@ -1,5 +1,6 @@
 import 'package:calcx/core/constants/app_routes.dart';
 import 'package:calcx/features/calculator/presentation/calculator_controller.dart';
+import 'package:calcx/features/calls/data/call_session_provider.dart';
 import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,11 +26,13 @@ class QuickPanicCalculatorButton extends ConsumerWidget {
     HapticFeedback.heavyImpact();
 
     // Ensure call screen overlay flags are reset
-    ref.read(isCallScreenShowingProvider.notifier).state = false;
+    try {
+      ref.read(isCallScreenShowingProvider.notifier).state = false;
+    } catch (_) {}
 
     // Reset calculator engine to clean innocent state
     try {
-      ref.read(calculatorControllerProvider.notifier).clear();
+      ref.read(calculatorControllerProvider.notifier).press('AC');
     } catch (_) {}
 
     // Instantly snap to the Calculator page
