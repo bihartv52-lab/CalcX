@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:calcx/features/settings/presentation/widgets/about_developer_card.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -762,6 +763,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
+        const AboutDeveloperCard(),
         OutlinedButton.icon(
           onPressed: () async {
             // Show confirmation dialog
