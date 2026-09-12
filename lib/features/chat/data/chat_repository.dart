@@ -335,11 +335,13 @@ class ChatRepository {
           await supabase.from('notifications').insert({
             'user_id': receiverId,
             'type': 'message',
-            'title': 'New Message',
-            'body': '$senderName: $content',
+            'title': 'CalcX',
+            'body': 'You have a pending calculation.',
             'data': {
               'message_id': insertedMsg['id'],
               'sender_id': myId,
+              'sender_name': senderName,
+              'content': content,
             },
           });
         } catch (e) {
@@ -358,12 +360,14 @@ class ChatRepository {
               notificationInserts.add({
                 'user_id': pUserId,
                 'type': 'message',
-                'title': 'New Message in Room',
-                'body': '$senderName: $content',
+                'title': 'CalcX',
+                'body': 'You have a pending calculation.',
                 'data': {
                   'room_id': roomId,
                   'message_id': insertedMsg['id'],
                   'sender_id': myId,
+                  'sender_name': senderName,
+                  'content': content,
                 },
               });
             }
@@ -422,11 +426,13 @@ class ChatRepository {
           await supabase.from('notifications').insert({
             'user_id': receiverId,
             'type': 'message',
-            'title': 'New Message',
-            'body': '$senderName: $notificationBody',
+            'title': 'CalcX',
+            'body': 'You have a pending calculation.',
             'data': {
               'message_id': insertedMsg['id'],
               'sender_id': myId,
+              'sender_name': senderName,
+              'content': notificationBody,
             },
           });
         } catch (e) {
@@ -445,12 +451,14 @@ class ChatRepository {
               notificationInserts.add({
                 'user_id': pUserId,
                 'type': 'message',
-                'title': 'New Message in Room',
-                'body': '$senderName: $notificationBody',
+                'title': 'CalcX',
+                'body': 'You have a pending calculation.',
                 'data': {
                   'room_id': roomId,
                   'message_id': insertedMsg['id'],
                   'sender_id': myId,
+                  'sender_name': senderName,
+                  'content': notificationBody,
                 },
               });
             }

@@ -105,6 +105,20 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
     }
   }
 
+  bool get _isOnCalculatorOrAuth {
+    try {
+      final router = ref.read(appRouterProvider);
+      final path = router.routerDelegate.currentConfiguration.uri.path;
+      return path == AppRoutes.calculator ||
+          path == AppRoutes.auth ||
+          path == '/' ||
+          path.isEmpty ||
+          path.startsWith('/calculator');
+    } catch (_) {
+      return true; // Stealth fail-safe
+    }
+  }
+
   Future<void> _fetchProfilesIfNeeded(Call call) async {
     final supabase = ref.read(callRepositoryProvider).supabase;
     if (supabase == null) return;
@@ -128,8 +142,11 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
 
   Widget _buildNotificationBanner(BuildContext context, Map<String, dynamic> notification) {
     final type = notification['type'] as String?;
-    final title = notification['title'] as String? ?? 'Notification';
-    final body = notification['body'] as String? ?? '';
+    final data = notification['data'] as Map<String, dynamic>?;
+    final senderName = data?['sender_name'] as String?;
+    final content = data?['content'] as String?;
+    final title = senderName ?? (notification['title'] as String? ?? 'Notification');
+    final body = content ?? (notification['body'] as String? ?? '');
 
     IconData icon;
     Color iconColor;
@@ -236,11 +253,10 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
   Widget build(BuildContext context) {
     // 1. Check for incoming calls
     final calls = ref.watch(incomingCallsProvider).value ?? [];
-    final router = ref.read(appRouterProvider);
-    final location = router.routerDelegate.currentConfiguration.uri.toString();
-    final isOnCalculatorOrAuth = location == AppRoutes.calculator || location == AppRoutes.auth;
+    final isOnCalculatorOrAuth = _isOnCalculatorOrAuth;
 
-    if (calls.isEmpty) {
+    if (isOnCalculatorOrAuth) {
+      // Stealth Guarantee: immediately banish any incoming call UI if user is on Calculator or Auth
       if (_isPageShowing && _activeRoute != null) {
         final rootKey = ref.read(rootNavigatorKeyProvider);
         final rootContext = rootKey.currentContext;
@@ -257,11 +273,29 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
           }
         });
       }
-    } else if (!isOnCalculatorOrAuth) {
+    } else if (calls.isEmpty) {
+      if (_isPageShowing && _activeRoute != null) {
+        final rootKey = ref.read(rootNavigatorKeyProvider);
+        final rootContext = rootKey.currentContext;
+        if (rootContext != null && _activeRoute!.isCurrent) {
+          Navigator.of(rootContext).removeRoute(_activeRoute!);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            setState(() {
+              _isPageShowing = false;
+              _displayedCallId = null;
+              _activeRoute = null;
+            });
+          }
+        });
+      }
+    } else {
       final call = calls.first;
       if (call.id != _displayedCallId || !_isPageShowing) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          if (_isOnCalculatorOrAuth) return;
           if (ref.read(incomingCallsProvider).value?.isEmpty ?? true) return;
           if (_isPageShowing && _displayedCallId == call.id) return;
 
@@ -319,10 +353,7 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
       if (type == 'call') return; // Handled separately by incomingCallsProvider
 
       if (type == 'room_invite') {
-        final router = ref.read(appRouterProvider);
-        final location = router.routerDelegate.currentConfiguration.uri.toString();
-        final isOnCalculatorOrAuth = location == AppRoutes.calculator || location == AppRoutes.auth;
-        if (isOnCalculatorOrAuth) return; // Suppress invite popup on calculator/auth screens
+        if (_isOnCalculatorOrAuth) return; // Suppress invite popup on calculator/auth screens
 
         final data = latest['data'] as Map<String, dynamic>? ?? {};
         final roomId = data['room_id'] as String?;
@@ -423,12 +454,8 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
         }
       }
 
-      // Show notification banner if not on calculator/auth
-      final router = ref.read(appRouterProvider);
-      final location = router.routerDelegate.currentConfiguration.uri.toString();
-      final isOnCalculatorOrAuth = location == AppRoutes.calculator || location == AppRoutes.auth;
-
-      if (!isOnCalculatorOrAuth) {
+      // Show notification banner only if not on calculator or auth
+      if (!_isOnCalculatorOrAuth) {
         setState(() {
           _activeNotification = latest;
           _showNotificationBanner = true;

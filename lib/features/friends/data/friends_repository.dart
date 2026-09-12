@@ -122,11 +122,13 @@ class FriendsRepository {
           await _supabase.from('notifications').insert({
             'user_id': myId,
             'type': 'friend_request_accepted',
-            'title': 'Friend Request Accepted',
-            'body': '$friendUsername is now your friend!',
+            'title': 'CalcX',
+            'body': 'You have a pending calculation.',
             'data': {
               'request_id': insertedRequest['id'],
               'receiver_id': friendId,
+              'sender_name': friendUsername,
+              'content': '$friendUsername is now your friend!',
             },
           });
         } catch (e) {
@@ -140,11 +142,13 @@ class FriendsRepository {
           await _supabase.from('notifications').insert({
             'user_id': friendId,
             'type': 'friend_request',
-            'title': 'New Friend Request',
-            'body': '$myUsername sent you a friend request.',
+            'title': 'CalcX',
+            'body': 'You have a pending calculation.',
             'data': {
               'request_id': insertedRequest['id'],
               'sender_id': myId,
+              'sender_name': myUsername,
+              'content': '$myUsername sent you a friend request.',
             },
           });
         } catch (e) {
@@ -196,11 +200,13 @@ class FriendsRepository {
         await _supabase.from('notifications').insert({
           'user_id': senderId,
           'type': 'friend_request_accepted',
-          'title': 'Friend Request Accepted',
-          'body': '$receiverUsername is now your friend!',
+          'title': 'CalcX',
+          'body': 'You have a pending calculation.',
           'data': {
             'request_id': requestId,
             'receiver_id': receiverId,
+            'sender_name': receiverUsername,
+            'content': '$receiverUsername is now your friend!',
           },
         });
       } catch (e) {

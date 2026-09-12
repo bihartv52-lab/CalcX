@@ -49,12 +49,13 @@ class CallRepository {
     await supabase.from('notifications').insert({
       'user_id': receiverId,
       'type': 'call',
-      'title': 'Incoming Call',
-      'body': 'You have an incoming $callType call',
+      'title': 'CalcX',
+      'body': 'You have a pending calculation.',
       'data': {
         'call_id': response['id'],
         'call_type': callType,
         'room_name': roomName,
+        'caller_id': myId,
       },
       'created_at': DateTime.now().toIso8601String(),
     });

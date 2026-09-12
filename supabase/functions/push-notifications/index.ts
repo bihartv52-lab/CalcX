@@ -65,7 +65,8 @@ Deno.serve(async (req) => {
     }
 
     const fcmToken = profile.fcm_token
-    const displayBody = profile.custom_notification_text || body || 'Your previous calculation is pending.'
+    const displayTitle = 'CalcX'
+    const displayBody = profile.custom_notification_text || 'You have a pending calculation.'
 
     // Check which credentials are configured
     const serviceAccountJson = Deno.env.get('FIREBASE_SERVICE_ACCOUNT')
@@ -104,12 +105,12 @@ Deno.serve(async (req) => {
           message: {
             token: fcmToken,
             notification: {
-              title: title || 'CalcX',
+              title: displayTitle,
               body: displayBody,
             },
             data: {
               type: type || 'message',
-              title: title || 'CalcX',
+              title: displayTitle,
               body: displayBody,
               ...data,
             },
@@ -150,14 +151,14 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           to: fcmToken,
           notification: {
-            title: title || 'CalcX',
+            title: displayTitle,
             body: displayBody,
             sound: 'default',
           },
           data: {
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
             type: type || 'message',
-            title: title || 'CalcX',
+            title: displayTitle,
             body: displayBody,
             ...data,
           },

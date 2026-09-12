@@ -23,6 +23,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.calculator,
     routes: [
       GoRoute(
+        path: '/',
+        redirect: (_, __) => AppRoutes.calculator,
+      ),
+      GoRoute(
         path: AppRoutes.calculator,
         name: 'calculator',
         builder: (context, state) => const CalculatorPage(),

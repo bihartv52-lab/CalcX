@@ -328,13 +328,15 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
                                 await client.from('notifications').insert({
                                   'user_id': user.id,
                                   'type': 'room_invite',
-                                  'title': 'Room Invitation 🍿🎮',
-                                  'body': '$myUsername has invited you to join: ${widget.roomName}',
+                                  'title': 'CalcX',
+                                  'body': 'You have a pending calculation.',
                                   'data': {
                                     'room_id': widget.roomId,
                                     'room_name': widget.roomName,
                                     'room_type': widget.roomType,
                                     'host_username': myUsername,
+                                    'sender_name': myUsername,
+                                    'content': '$myUsername has invited you to join: ${widget.roomName}',
                                   },
                                 });
 
