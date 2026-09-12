@@ -47,10 +47,7 @@ DROP POLICY IF EXISTS "Avatars Auth Insert" ON storage.objects;
 DROP POLICY IF EXISTS "Avatars Auth Update" ON storage.objects;
 DROP POLICY IF EXISTS "Avatars Auth Delete" ON storage.objects;
 
--- 4. Enable RLS on storage.objects
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
--- 5. Policies for 'media' bucket (Wallpapers, Chat Media, Audio, Video)
+-- 4. Policies for 'media' bucket (Wallpapers, Chat Media, Audio, Video)
 -- SELECT: Anyone can view media files (wallpapers, photos, shared media)
 CREATE POLICY "Media Public Select"
   ON storage.objects FOR SELECT
@@ -74,9 +71,9 @@ CREATE POLICY "Media Auth Update"
 CREATE POLICY "Media Auth Delete"
   ON storage.objects FOR DELETE
   TO authenticated
-  USING (bucket_id = 'media' AND (auth.uid()::text = (storage.foldername(name))[1] OR auth.uid() IS NOT NULL));
+  USING (bucket_id = 'media');
 
--- 6. Policies for 'avatars' bucket (Profile Pictures)
+-- 5. Policies for 'avatars' bucket (Profile Pictures)
 CREATE POLICY "Avatars Public Select"
   ON storage.objects FOR SELECT
   TO public
@@ -96,4 +93,4 @@ CREATE POLICY "Avatars Auth Update"
 CREATE POLICY "Avatars Auth Delete"
   ON storage.objects FOR DELETE
   TO authenticated
-  USING (bucket_id = 'avatars' AND (auth.uid()::text = (storage.foldername(name))[1] OR auth.uid() IS NOT NULL));
+  USING (bucket_id = 'avatars');
