@@ -1106,7 +1106,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           final bytes = await picked.readAsBytes();
                           final client = SupabaseService.clientOrNull;
                           if (client == null) throw 'Supabase not initialized';
-                          final fileName = 'chat_wallpapers/wp_${widget.otherUserId}_${DateTime.now().millisecondsSinceEpoch}.png';
+                          final myId = client.auth.currentUser?.id;
+                          final fileName = myId != null
+                              ? '$myId/chat_wallpapers/wp_${widget.otherUserId}_${DateTime.now().millisecondsSinceEpoch}.png'
+                              : 'chat_wallpapers/wp_${widget.otherUserId}_${DateTime.now().millisecondsSinceEpoch}.png';
                           await client.storage.from('media').uploadBinary(
                             fileName,
                             bytes,
