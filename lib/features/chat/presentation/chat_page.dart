@@ -136,6 +136,7 @@ class ChatPage extends ConsumerStatefulWidget {
 
 class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver {
   final _messageController = TextEditingController();
+  final _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
   
   UserProfile? _otherUser;
@@ -246,6 +247,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     }
     
     _messageController.dispose();
+    _messageFocusNode.dispose();
     _scrollController.dispose();
     _typingThrottleTimer?.cancel();
     _typingClearTimer?.cancel();
@@ -590,9 +592,13 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
   Future<void> _sendMessage() async {
     final content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty) {
+      _messageFocusNode.requestFocus();
+      return;
+    }
 
     _messageController.clear();
+    _messageFocusNode.requestFocus();
     
     // Clear typing states immediately on message send
     _typingThrottleTimer?.cancel();
@@ -840,7 +846,23 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       }
     });
 
-    final wallpaperPath = themeSettings.chatWallpapers[widget.otherUserId] ?? themeSettings.globalWallpaperPath;
+    // Check for shared chat theme/wallpaper set by either friend in this conversation
+    String? sharedWallpaper;
+    final allChatMessages = [..._optimisticMessages, ...?(messagesAsync.value ?? <Message>[])];
+    for (final m in allChatMessages.reversed) {
+      if (m.messageType == 'chat_wallpaper' && m.mediaUrl != null && m.mediaUrl!.isNotEmpty) {
+        if (m.mediaUrl == 'reset') {
+          sharedWallpaper = null;
+        } else {
+          sharedWallpaper = m.mediaUrl;
+        }
+        break;
+      }
+    }
+
+    final wallpaperPath = sharedWallpaper ??
+        themeSettings.chatWallpapers[widget.otherUserId] ??
+        themeSettings.globalWallpaperPath;
 
     return Scaffold(
       backgroundColor: isLight ? Colors.white : Colors.black,
@@ -1079,23 +1101,52 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           final picker = ImagePicker();
                           final picked = await picker.pickImage(source: ImageSource.gallery);
                           if (picked == null) return;
-                          await ref.read(themeServiceProvider.notifier).setChatWallpaper(
-                                widget.otherUserId,
-                                picked,
-                              );
+                          
+                          // 1. Upload to Supabase Storage media bucket
+                          final bytes = await picked.readAsBytes();
+                          final client = SupabaseService.clientOrNull;
+                          if (client == null) throw 'Supabase not initialized';
+                          final fileName = 'chat_wallpapers/wp_${widget.otherUserId}_${DateTime.now().millisecondsSinceEpoch}.png';
+                          await client.storage.from('media').uploadBinary(
+                            fileName,
+                            bytes,
+                            fileOptions: const FileOptions(contentType: 'image/png', upsert: true),
+                          );
+                          final publicUrl = client.storage.from('media').getPublicUrl(fileName);
+
+                          // 2. Broadcast and save message so friend also receives it
+                          await ref.read(chatRepositoryProvider).sendMessage(
+                            receiverId: widget.otherUserId,
+                            content: 'updated the chat theme',
+                            messageType: 'chat_wallpaper',
+                            mediaUrl: publicUrl,
+                          );
+
+                          // 3. Update local theme service
+                          await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
+                            widget.otherUserId,
+                            publicUrl,
+                          );
+
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('✅ Chat wallpaper updated!')),
+                              const SnackBar(content: Text('✅ Chat wallpaper updated for both friends!')),
                             );
                           }
                         } catch (e) {
                           if (mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Could not update wallpaper. Please try again.')),
+                              SnackBar(content: Text('Could not update wallpaper: $e')),
                             );
                           }
                         }
                       } else if (val.startsWith('preset_')) {
+                        await ref.read(chatRepositoryProvider).sendMessage(
+                          receiverId: widget.otherUserId,
+                          content: 'updated the chat theme',
+                          messageType: 'chat_wallpaper',
+                          mediaUrl: val,
+                        );
                         await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
                               widget.otherUserId,
                               val,
@@ -1111,14 +1162,20 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                           ? 'Sunset'
                                           : 'Theme';
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('✅ $themeTitle theme set!')),
+                            SnackBar(content: Text('✅ $themeTitle theme set for both friends!')),
                           );
                         }
                       } else if (val == 'reset_wallpaper') {
+                        await ref.read(chatRepositoryProvider).sendMessage(
+                          receiverId: widget.otherUserId,
+                          content: 'reset the chat theme',
+                          messageType: 'chat_wallpaper',
+                          mediaUrl: 'reset',
+                        );
                         await ref.read(themeServiceProvider.notifier).removeChatWallpaper(widget.otherUserId);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('✅ Chat theme reset to default!')),
+                            const SnackBar(content: Text('✅ Chat theme reset to default for both!')),
                           );
                         }
                       }
@@ -1287,6 +1344,14 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                 searchQuery: _searchQuery,
                                 isHighlighted: _highlightedMessageId == message.id,
                                 onReplyTap: (replyId) => _scrollToMessage(replyId),
+                                onReply: () {
+                                  HapticFeedback.lightImpact();
+                                  setState(() {
+                                    _replyingTo = message;
+                                  });
+                                  _messageFocusNode.requestFocus();
+                                },
+                                onLongPress: () => _showMessageMenu(message),
                                 otherUserAvatarUrl: otherUser?.avatarUrl,
                                 otherUserInitials: otherUser?.displayName.isNotEmpty == true
                                     ? otherUser!.displayName[0].toUpperCase()
@@ -1329,8 +1394,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                   setState(() {
                                     _replyingTo = message;
                                   });
+                                  _messageFocusNode.requestFocus();
                                 },
                                 child: GestureDetector(
+                                  onSecondaryTap: () => _showMessageMenu(message),
                                   onDoubleTap: () {
                                     HapticFeedback.lightImpact();
                                     ref.read(chatRepositoryProvider).addReaction(message.id, '❤️');
@@ -1471,21 +1538,36 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                     child: Row(
                                       children: [
                                         Expanded(
-                                          child: TextField(
-                                            controller: _messageController,
-                                            style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
-                                            decoration: InputDecoration(
-                                              hintText: 'Message...',
-                                              hintStyle: TextStyle(color: isLight ? Colors.black38 : Colors.grey),
-                                              border: InputBorder.none,
-                                              focusedBorder: InputBorder.none,
-                                              enabledBorder: InputBorder.none,
-                                              contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                                              filled: false,
+                                          child: Focus(
+                                            onKeyEvent: (node, event) {
+                                              if (event is KeyDownEvent &&
+                                                  event.logicalKey == LogicalKeyboardKey.enter &&
+                                                  !HardwareKeyboard.instance.isShiftPressed) {
+                                                if (_messageController.text.trim().isNotEmpty) {
+                                                  _sendMessage();
+                                                }
+                                                _messageFocusNode.requestFocus();
+                                                return KeyEventResult.handled;
+                                              }
+                                              return KeyEventResult.ignored;
+                                            },
+                                            child: TextField(
+                                              focusNode: _messageFocusNode,
+                                              controller: _messageController,
+                                              style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
+                                              decoration: InputDecoration(
+                                                hintText: 'Message...',
+                                                hintStyle: TextStyle(color: isLight ? Colors.black38 : Colors.grey),
+                                                border: InputBorder.none,
+                                                focusedBorder: InputBorder.none,
+                                                enabledBorder: InputBorder.none,
+                                                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                                filled: false,
+                                              ),
+                                              maxLines: 5,
+                                              minLines: 1,
+                                              textCapitalization: TextCapitalization.sentences,
                                             ),
-                                            maxLines: 5,
-                                            minLines: 1,
-                                            textCapitalization: TextCapitalization.sentences,
                                           ),
                                         ),
                                       ],
@@ -1753,9 +1835,15 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
         ),
       );
     } else {
+      ImageProvider imageProvider;
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        imageProvider = CachedNetworkImageProvider(path);
+      } else {
+        imageProvider = pf.getWallpaperImageProvider(path);
+      }
       return BoxDecoration(
         image: DecorationImage(
-          image: pf.getWallpaperImageProvider(path),
+          image: imageProvider,
           fit: BoxFit.cover,
         ),
       );
@@ -1831,6 +1919,8 @@ class _MessageBubble extends ConsumerWidget {
     this.searchQuery,
     required this.isHighlighted,
     required this.onReplyTap,
+    this.onReply,
+    this.onLongPress,
     this.otherUserAvatarUrl,
     required this.otherUserInitials,
     super.key,
@@ -1845,6 +1935,8 @@ class _MessageBubble extends ConsumerWidget {
   final String? searchQuery;
   final bool isHighlighted;
   final ValueChanged<String> onReplyTap;
+  final VoidCallback? onReply;
+  final VoidCallback? onLongPress;
   final String? otherUserAvatarUrl;
   final String otherUserInitials;
 
@@ -1967,6 +2059,46 @@ class _MessageBubble extends ConsumerWidget {
     final isRead = (otherUserLastReadAt != null && message.createdAt.isBefore(otherUserLastReadAt!)) ||
         message.readUserIds.contains(chatPartnerId);
     final isLight = Theme.of(context).brightness == Brightness.light;
+
+    if (message.messageType == 'chat_wallpaper') {
+      final isReset = message.mediaUrl == 'reset';
+      final isPreset = message.mediaUrl?.startsWith('preset_') ?? false;
+      return Center(
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: isLight ? Colors.black.withOpacity(0.06) : Colors.white.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isLight ? Colors.black12 : Colors.white12,
+              width: 0.5,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isReset ? Icons.refresh_rounded : Icons.palette_outlined,
+                size: 14,
+                color: isLight ? Colors.black87 : Colors.white70,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isReset
+                    ? '${isMe ? "You" : "Friend"} reset the chat theme'
+                    : '${isMe ? "You" : "Friend"} updated the chat ${isPreset ? "theme" : "wallpaper"}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: isLight ? Colors.black87 : Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     // Instagram message bubble radii logic
     BorderRadius borderRadius;
@@ -2217,7 +2349,11 @@ class _MessageBubble extends ConsumerWidget {
               MessageHoverWrapper(
                 isMe: isMe,
                 textToCopy: message.content,
-                child: bubbleContent,
+                onReply: onReply,
+                child: GestureDetector(
+                  onSecondaryTap: onLongPress,
+                  child: bubbleContent,
+                ),
               ),
             ],
           ),

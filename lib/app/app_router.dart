@@ -15,12 +15,42 @@ import 'package:go_router/go_router.dart';
 
 final rootNavigatorKeyProvider = Provider((ref) => GlobalKey<NavigatorState>());
 
+/// Tracks whether the user has unlocked the session via the calculator passcode.
+/// Purely in-memory: defaults to false every time the app/website is loaded or refreshed.
+class CalculatorUnlockedNotifier extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  @override
+  set state(bool value) => super.state = value;
+}
+
+final calculatorUnlockedProvider = NotifierProvider<CalculatorUnlockedNotifier, bool>(
+  CalculatorUnlockedNotifier.new,
+);
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final rootKey = ref.watch(rootNavigatorKeyProvider);
 
   return GoRouter(
     navigatorKey: rootKey,
     initialLocation: AppRoutes.calculator,
+    redirect: (context, state) {
+      final isUnlocked = ref.watch(calculatorUnlockedProvider);
+      final loc = state.matchedLocation;
+
+      // Always permit calculator and auth screens
+      if (loc == AppRoutes.calculator || loc == AppRoutes.auth || loc == '/') {
+        return null;
+      }
+
+      // If calculator hasn't been unlocked for this session, force redirect to calculator disguise!
+      if (!isUnlocked) {
+        return AppRoutes.calculator;
+      }
+
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/',

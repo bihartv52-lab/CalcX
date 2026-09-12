@@ -1,3 +1,4 @@
+import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
 import 'package:calcx/features/calculator/presentation/calculator_controller.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
@@ -28,6 +29,11 @@ class QuickPanicCalculatorButton extends ConsumerWidget {
     // Ensure call screen overlay flags are reset
     try {
       ref.read(isCallScreenShowingProvider.notifier).state = false;
+    } catch (_) {}
+
+    // Re-lock the secret session so calculator passcode is strictly required again
+    try {
+      ref.read(calculatorUnlockedProvider.notifier).state = false;
     } catch (_) {}
 
     // Reset calculator engine to clean innocent state

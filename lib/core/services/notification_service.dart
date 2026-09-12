@@ -16,6 +16,20 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 class NotificationService {
   NotificationService._();
 
+  /// Holds the target chat route when the app is launched or opened from a notification.
+  /// After the user unlocks via the Calculator disguise, the app navigates here.
+  static String? pendingNotificationRoute;
+
+  static void _processNotificationPayload(Map<String, dynamic> data) {
+    final senderId = data['sender_id'] as String?;
+    final roomId = data['room_id'] as String?;
+    if (senderId != null && senderId.isNotEmpty) {
+      pendingNotificationRoute = '/chat/$senderId';
+    } else if (roomId != null && roomId.isNotEmpty) {
+      pendingNotificationRoute = '/room/$roomId/chat';
+    }
+  }
+
   static Future<void> maybeInitialize() async {
     try {
       await Firebase.initializeApp();
@@ -42,16 +56,23 @@ class NotificationService {
         syncToken(token);
       });
 
+      // Check if launched from a terminated notification click
+      final initialMessage = await messaging.getInitialMessage();
+      if (initialMessage != null) {
+        _processNotificationPayload(initialMessage.data);
+      }
+
+      // Handle message clicks when app is in background
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        debugPrint('App opened by notification: ${message.data}');
+        _processNotificationPayload(message.data);
+      });
+
       // Try initial sync if logged in
       final token = await messaging.getToken();
       if (token != null) {
         await syncToken(token);
       }
-
-      // Handle message clicks when app is in background/terminated
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-        debugPrint('App opened by notification: ${message.data}');
-      });
 
     } catch (e) {
       debugPrint('Notification init skipped or failed: $e');

@@ -1,6 +1,9 @@
+import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
 import 'package:calcx/core/services/biometric_service.dart';
+import 'package:calcx/core/services/notification_service.dart';
 import 'package:calcx/core/services/settings_service.dart';
+import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/core/widgets/neon_scaffold.dart';
 import 'package:calcx/features/calculator/presentation/calculator_controller.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +12,22 @@ import 'package:go_router/go_router.dart';
 
 class CalculatorPage extends ConsumerWidget {
   const CalculatorPage({super.key});
+
+  void _handleUnlock(BuildContext context, WidgetRef ref) {
+    ref.read(calculatorUnlockedProvider.notifier).state = true;
+    final targetRoute = NotificationService.pendingNotificationRoute;
+    if (targetRoute != null && targetRoute.isNotEmpty) {
+      NotificationService.pendingNotificationRoute = null;
+      context.go(targetRoute);
+    } else {
+      final user = SupabaseService.clientOrNull?.auth.currentUser;
+      if (user != null) {
+        context.go(AppRoutes.home);
+      } else {
+        context.go(AppRoutes.auth);
+      }
+    }
+  }
 
   static const _keys = [
     'AC',
@@ -87,7 +106,7 @@ class CalculatorPage extends ConsumerWidget {
                                     return;
                                   }
                                   if (outcome == CalculatorOutcome.unlocked) {
-                                    context.go(AppRoutes.home);
+                                    _handleUnlock(context, ref);
                                   }
                                 }
                               },
@@ -166,6 +185,7 @@ class CalculatorPage extends ConsumerWidget {
                               }
                               if (outcome ==
                                   CalculatorOutcome.passcodeCreated) {
+                                ref.read(calculatorUnlockedProvider.notifier).state = true;
                                 // Show success message
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
@@ -180,7 +200,7 @@ class CalculatorPage extends ConsumerWidget {
                                 context.go(AppRoutes.auth);
                               }
                               if (outcome == CalculatorOutcome.unlocked) {
-                                context.go(AppRoutes.home);
+                                _handleUnlock(context, ref);
                               }
                             },
                           );

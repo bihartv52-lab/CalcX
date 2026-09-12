@@ -29,6 +29,7 @@ class RoomChatPage extends ConsumerStatefulWidget {
 
 class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBindingObserver {
   final _messageController = TextEditingController();
+  final _messageFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _imagePicker = ImagePicker();
   final Map<String, String> _profileNames = {};
@@ -77,6 +78,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
     _typingThrottleTimer?.cancel();
     _typingClearTimer?.cancel();
     _messageController.dispose();
+    _messageFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -254,9 +256,13 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
 
   Future<void> _sendMessage() async {
     final content = _messageController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty) {
+      _messageFocusNode.requestFocus();
+      return;
+    }
 
     _messageController.clear();
+    _messageFocusNode.requestFocus();
     
     _typingThrottleTimer?.cancel();
     _typingThrottleTimer = null;
@@ -866,20 +872,35 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
                       ),
                     ),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                    child: TextField(
-                      controller: _messageController,
-                      style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Message...',
-                        hintStyle: TextStyle(color: isLight ? Colors.black38 : Colors.grey),
-                        border: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                        filled: false,
+                    child: Focus(
+                      onKeyEvent: (node, event) {
+                        if (event is KeyDownEvent &&
+                            event.logicalKey == LogicalKeyboardKey.enter &&
+                            !HardwareKeyboard.instance.isShiftPressed) {
+                          if (_messageController.text.trim().isNotEmpty) {
+                            _sendMessage();
+                          }
+                          _messageFocusNode.requestFocus();
+                          return KeyEventResult.handled;
+                        }
+                        return KeyEventResult.ignored;
+                      },
+                      child: TextField(
+                        focusNode: _messageFocusNode,
+                        controller: _messageController,
+                        style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
+                        decoration: InputDecoration(
+                          hintText: 'Message...',
+                          hintStyle: TextStyle(color: isLight ? Colors.black38 : Colors.grey),
+                          border: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          filled: false,
+                        ),
+                        maxLines: 5,
+                        minLines: 1,
                       ),
-                      maxLines: 5,
-                      minLines: 1,
                     ),
                   ),
                 ),

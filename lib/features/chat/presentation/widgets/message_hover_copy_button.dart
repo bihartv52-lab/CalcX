@@ -1,6 +1,70 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+/// A sleek reply button that appears when hovering over a message bubble
+/// on web or desktop, allowing instant 1-click reply.
+class MessageHoverReplyButton extends StatelessWidget {
+  final VoidCallback? onReply;
+  final bool isVisible;
+
+  const MessageHoverReplyButton({
+    super.key,
+    required this.onReply,
+    required this.isVisible,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (onReply == null) return const SizedBox.shrink();
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
+    return AnimatedOpacity(
+      opacity: isVisible ? 1.0 : 0.0,
+      duration: const Duration(milliseconds: 180),
+      child: IgnorePointer(
+        ignoring: !isVisible,
+        child: Tooltip(
+          message: 'Reply',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                onReply?.call();
+              },
+              borderRadius: BorderRadius.circular(16),
+              hoverColor: isLight ? Colors.black12 : Colors.white24,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isLight ? const Color(0xFFF0F0F0) : const Color(0xFF2C2C2E),
+                  border: Border.all(
+                    color: isLight ? Colors.black12 : Colors.white12,
+                    width: 0.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.08),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  Icons.reply_rounded,
+                  size: 13,
+                  color: isLight ? Colors.black87 : Colors.white70,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A sleek copy button designed to appear when hovering over a message bubble
 /// on web or desktop, giving instant tactile clipboard feedback.
 class MessageHoverCopyButton extends StatefulWidget {
@@ -93,17 +157,20 @@ class _MessageHoverCopyButtonState extends State<MessageHoverCopyButton> {
 }
 
 /// A wrapper widget that listens for hover events on web and desktop,
-/// seamlessly revealing the [MessageHoverCopyButton] alongside the child message.
+/// seamlessly revealing the action buttons ([MessageHoverReplyButton] and [MessageHoverCopyButton])
+/// alongside the child message (including shared cards and media).
 class MessageHoverWrapper extends StatefulWidget {
   final Widget child;
   final String textToCopy;
   final bool isMe;
+  final VoidCallback? onReply;
 
   const MessageHoverWrapper({
     super.key,
     required this.child,
     required this.textToCopy,
     this.isMe = false,
+    this.onReply,
   });
 
   @override
@@ -113,9 +180,30 @@ class MessageHoverWrapper extends StatefulWidget {
 class _MessageHoverWrapperState extends State<MessageHoverWrapper> {
   bool _isHovered = false;
 
+  Widget _buildActions() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.onReply != null)
+          MessageHoverReplyButton(
+            onReply: widget.onReply,
+            isVisible: _isHovered,
+          ),
+        if (widget.textToCopy.isNotEmpty && widget.onReply != null)
+          const SizedBox(width: 4),
+        if (widget.textToCopy.isNotEmpty)
+          MessageHoverCopyButton(
+            textToCopy: widget.textToCopy,
+            isVisible: _isHovered,
+            isMe: widget.isMe,
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (widget.textToCopy.isEmpty) {
+    if (widget.textToCopy.isEmpty && widget.onReply == null) {
       return widget.child;
     }
 
@@ -129,21 +217,13 @@ class _MessageHoverWrapperState extends State<MessageHoverWrapper> {
           if (widget.isMe)
             Padding(
               padding: const EdgeInsets.only(right: 6),
-              child: MessageHoverCopyButton(
-                textToCopy: widget.textToCopy,
-                isVisible: _isHovered,
-                isMe: widget.isMe,
-              ),
+              child: _buildActions(),
             ),
           Flexible(child: widget.child),
           if (!widget.isMe)
             Padding(
               padding: const EdgeInsets.only(left: 6),
-              child: MessageHoverCopyButton(
-                textToCopy: widget.textToCopy,
-                isVisible: _isHovered,
-                isMe: widget.isMe,
-              ),
+              child: _buildActions(),
             ),
         ],
       ),

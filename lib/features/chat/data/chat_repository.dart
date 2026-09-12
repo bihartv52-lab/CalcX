@@ -307,6 +307,8 @@ class ChatRepository {
     required String content,
     String? roomId,
     String? replyTo,
+    String messageType = 'text',
+    String? mediaUrl,
   }) async {
     final supabase = _supabase;
     if (supabase == null) return;
@@ -319,7 +321,8 @@ class ChatRepository {
       'receiver_id': receiverId,
       'room_id': roomId,
       'content': content,
-      'message_type': 'text',
+      'message_type': messageType,
+      'media_url': mediaUrl,
       'reply_to': replyTo,
       'created_at': DateTime.now().toIso8601String(),
     }).select();
@@ -575,6 +578,15 @@ class ChatRepository {
       }).toList();
 
       await supabase.from('message_reads').upsert(inserts);
+
+      // Mark message notifications as read so pending notification count resets
+      try {
+        await supabase
+            .from('notifications')
+            .update({'read': true})
+            .eq('user_id', myId)
+            .eq('type', 'message');
+      } catch (_) {}
     } catch (e) {
       debugPrint('Error marking all messages as read: $e');
     }

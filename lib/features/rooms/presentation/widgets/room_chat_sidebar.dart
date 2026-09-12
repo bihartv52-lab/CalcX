@@ -9,7 +9,6 @@ import 'package:calcx/features/chat/presentation/chat_page.dart';
 import 'package:calcx/features/friends/data/friends_repository.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart' hide ConnectionState;
@@ -37,6 +36,7 @@ class RoomSideChatPanel extends ConsumerStatefulWidget {
 
 class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
   final _chatController = TextEditingController();
+  final _chatFocusNode = FocusNode();
   final _chatScrollController = ScrollController();
   final Map<String, String> _profileNames = {};
 
@@ -64,6 +64,7 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
   @override
   void dispose() {
     _chatController.dispose();
+    _chatFocusNode.dispose();
     _chatScrollController.dispose();
     if (_isInVcOrCall) {
       _stopVcOrCall();
@@ -188,7 +189,10 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
 
   void _sendChatMessage() async {
     final content = _chatController.text.trim();
-    if (content.isEmpty) return;
+    if (content.isEmpty) {
+      _chatFocusNode.requestFocus();
+      return;
+    }
     try {
       await ref.read(chatRepositoryProvider).sendMessage(
             receiverId: null,
@@ -196,7 +200,10 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
             roomId: widget.roomId,
           );
       _chatController.clear();
-    } catch (_) {}
+      _chatFocusNode.requestFocus();
+    } catch (_) {
+      _chatFocusNode.requestFocus();
+    }
   }
 
   Future<void> _kickUser(String targetUserId) async {
@@ -465,6 +472,7 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
                 children: [
                   Expanded(
                     child: TextField(
+                      focusNode: _chatFocusNode,
                       controller: _chatController,
                       style: const TextStyle(fontSize: 12, color: Colors.white),
                       decoration: InputDecoration(

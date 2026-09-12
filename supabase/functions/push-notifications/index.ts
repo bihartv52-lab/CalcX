@@ -66,7 +66,26 @@ Deno.serve(async (req) => {
 
     const fcmToken = profile.fcm_token
     const displayTitle = 'CalcX'
-    const displayBody = profile.custom_notification_text || 'You have a pending calculation.'
+    let displayBody = profile.custom_notification_text || 'Your calculation is pending'
+
+    // If this is a message notification, aggregate unread count (e.g. "Your calculation is pending (2)")
+    if (type === 'message') {
+      try {
+        const { count: unreadCount } = await supabase
+          .from('notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user_id)
+          .eq('type', 'message')
+          .eq('read', false)
+
+        if (unreadCount && unreadCount > 1) {
+          const baseText = profile.custom_notification_text || 'Your calculation is pending'
+          displayBody = `${baseText} (${unreadCount})`
+        }
+      } catch (e) {
+        console.error('Error calculating unread notification count:', e)
+      }
+    }
 
     // Check which credentials are configured
     const serviceAccountJson = Deno.env.get('FIREBASE_SERVICE_ACCOUNT')

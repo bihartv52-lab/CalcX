@@ -28,6 +28,7 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
   Duration _elapsed = Duration.zero;
 
   bool _showChatOverlay = false;
+  bool? _userFitMode;
   final TextEditingController _callChatController = TextEditingController();
   final ScrollController _callChatScrollController = ScrollController();
 
@@ -176,6 +177,8 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
     final isConnecting = session == null;
     final room = session?.callService.room;
     final remoteParticipants = room?.remoteParticipants.values.toList() ?? [];
+    final isWide = MediaQuery.of(context).size.width > 700;
+    final isContain = _userFitMode ?? isWide;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -184,11 +187,12 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
           children: [
             // Video Views
             if (widget.call.isVideo && !isConnecting) ...[
-              // Remote Video (Full Screen)
+              // Remote Video (Full Screen / Responsive Fit)
               if (remoteParticipants.isNotEmpty)
                 Positioned.fill(
                   child: _RemoteVideoView(
                     participant: remoteParticipants.first,
+                    isContainFit: isContain,
                   ),
                 )
               else
@@ -205,8 +209,8 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
                   top: 80,
                   right: 16,
                   child: Container(
-                    width: 100,
-                    height: 140,
+                    width: isWide ? 150 : 100,
+                    height: isWide ? 100 : 140,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.white24, width: 1.5),
@@ -448,6 +452,20 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
                       ),
                     ),
                     const QuickPanicCalculatorButton(),
+                    if (widget.call.isVideo)
+                      IconButton(
+                        icon: Icon(
+                          isContain ? Icons.fit_screen_rounded : Icons.fullscreen_rounded,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                        tooltip: isContain ? 'Fit to Screen (Full View)' : 'Fill Screen (Zoomed)',
+                        onPressed: () {
+                          setState(() {
+                            _userFitMode = !isContain;
+                          });
+                        },
+                      ),
                     IconButton(
                       icon: const Icon(Icons.picture_in_picture_alt_rounded, color: Colors.white, size: 22),
                       tooltip: 'Minimize to Picture-in-Picture (PiP)',
@@ -682,9 +700,13 @@ class _CallControlButton extends StatelessWidget {
 }
 
 class _RemoteVideoView extends StatelessWidget {
-  const _RemoteVideoView({required this.participant});
+  const _RemoteVideoView({
+    required this.participant,
+    this.isContainFit = false,
+  });
 
   final RemoteParticipant participant;
+  final bool isContainFit;
 
   @override
   Widget build(BuildContext context) {
@@ -702,9 +724,11 @@ class _RemoteVideoView extends StatelessWidget {
       );
     }
 
-    return VideoTrackRenderer(
-      videoTrack as VideoTrack,
-      fit: screenSharePub != null ? VideoViewFit.contain : VideoViewFit.cover,
+    return Center(
+      child: VideoTrackRenderer(
+        videoTrack as VideoTrack,
+        fit: (screenSharePub != null || isContainFit) ? VideoViewFit.contain : VideoViewFit.cover,
+      ),
     );
   }
 }
