@@ -1113,7 +1113,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           await client.storage.from('media').uploadBinary(
                             fileName,
                             bytes,
-                            fileOptions: const FileOptions(contentType: 'image/png', upsert: true),
+                            fileOptions: const FileOptions(contentType: 'image/png', upsert: false),
                           );
                           final publicUrl = client.storage.from('media').getPublicUrl(fileName);
 
