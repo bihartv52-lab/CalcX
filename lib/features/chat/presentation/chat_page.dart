@@ -218,6 +218,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatRepositoryProvider).markAllAsRead(widget.otherUserId);
       ref.invalidate(recentChatsProvider);
+      if (mounted) {
+        _messageFocusNode.requestFocus();
+      }
     });
 
     _autoRetryTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
@@ -823,12 +826,18 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
     ref.listen(chatMessagesProvider(widget.otherUserId), (prev, next) {
       final messages = next.value ?? [];
-      final prevCount = prev?.value?.length ?? 0;
+      final prevMessages = prev?.value ?? [];
+      final prevCount = prevMessages.length;
       
       ref.read(chatRepositoryProvider).markAllAsRead(widget.otherUserId);
       ref.invalidate(recentChatsProvider);
 
-      if (messages.length > prevCount && messages.isNotEmpty) {
+      // Only scroll to bottom or show new message banner if a NEW message arrived at the bottom
+      // (Do NOT trigger when paginating/scrolling up to view older messages)
+      final hasNewLatestMessage = messages.isNotEmpty &&
+          (prevMessages.isEmpty || messages.first.id != prevMessages.first.id);
+
+      if (hasNewLatestMessage && messages.length > prevCount) {
         final lastMsg = messages.first;
         final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
         final isFromMe = lastMsg.senderId == myId;
@@ -849,7 +858,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     // Check for shared chat theme/wallpaper set by either friend in this conversation
     String? sharedWallpaper;
     final allChatMessages = [..._optimisticMessages, ...?(messagesAsync.value ?? <Message>[])];
-    for (final m in allChatMessages.reversed) {
+    for (final m in allChatMessages) {
       if (m.messageType == 'chat_wallpaper' && m.mediaUrl != null && m.mediaUrl!.isNotEmpty) {
         if (m.mediaUrl == 'reset') {
           sharedWallpaper = null;
@@ -1102,6 +1111,9 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           final picked = await picker.pickImage(source: ImageSource.gallery);
                           if (picked == null) return;
                           
+                          final previousWallpaperUrl = sharedWallpaper ??
+                              themeSettings.chatWallpapers[widget.otherUserId];
+
                           // 1. Upload to Supabase Storage media bucket
                           final bytes = await picked.readAsBytes();
                           final client = SupabaseService.clientOrNull;
@@ -1117,7 +1129,31 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           );
                           final publicUrl = client.storage.from('media').getPublicUrl(fileName);
 
-                          // 2. Broadcast and save message so friend also receives it
+                          // 2. Auto-delete previous custom wallpaper from Supabase storage
+                          if (previousWallpaperUrl != null && previousWallpaperUrl.contains('/media/')) {
+                            try {
+                              final uri = Uri.parse(previousWallpaperUrl);
+                              final segments = uri.pathSegments;
+                              final mediaIdx = segments.indexOf('media');
+                              if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
+                                final oldPath = segments.sublist(mediaIdx + 1).join('/');
+                                await client.storage.from('media').remove([oldPath]);
+                              }
+                            } catch (delErr) {
+                              debugPrint('Failed to delete old wallpaper file: $delErr');
+                            }
+                          }
+
+                          // 3. Clean up older chat_wallpaper messages in database
+                          try {
+                            if (myId != null) {
+                              await client.from('messages').delete()
+                                  .eq('message_type', 'chat_wallpaper')
+                                  .or('and(sender_id.eq.$myId,receiver_id.eq.${widget.otherUserId}),and(sender_id.eq.${widget.otherUserId},receiver_id.eq.$myId)');
+                            }
+                          } catch (_) {}
+
+                          // 4. Broadcast and save message so friend also receives it
                           await ref.read(chatRepositoryProvider).sendMessage(
                             receiverId: widget.otherUserId,
                             content: 'updated the chat theme',
@@ -1125,13 +1161,14 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                             mediaUrl: publicUrl,
                           );
 
-                          // 3. Update local theme service
+                          // 5. Update local theme service
                           await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
                             widget.otherUserId,
                             publicUrl,
                           );
 
                           if (mounted) {
+                            setState(() {});
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(content: Text('✅ Chat wallpaper updated for both friends!')),
                             );
@@ -1144,6 +1181,30 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           }
                         }
                       } else if (val.startsWith('preset_')) {
+                        final previousWallpaperUrl = sharedWallpaper ??
+                            themeSettings.chatWallpapers[widget.otherUserId];
+                        final client = SupabaseService.clientOrNull;
+                        if (previousWallpaperUrl != null && previousWallpaperUrl.contains('/media/')) {
+                          try {
+                            final uri = Uri.parse(previousWallpaperUrl);
+                            final segments = uri.pathSegments;
+                            final mediaIdx = segments.indexOf('media');
+                            if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
+                              final oldPath = segments.sublist(mediaIdx + 1).join('/');
+                              await client?.storage.from('media').remove([oldPath]);
+                            }
+                          } catch (_) {}
+                        }
+
+                        final myId = client?.auth.currentUser?.id;
+                        try {
+                          if (myId != null && client != null) {
+                            await client.from('messages').delete()
+                                .eq('message_type', 'chat_wallpaper')
+                                .or('and(sender_id.eq.$myId,receiver_id.eq.${widget.otherUserId}),and(sender_id.eq.${widget.otherUserId},receiver_id.eq.$myId)');
+                          }
+                        } catch (_) {}
+
                         await ref.read(chatRepositoryProvider).sendMessage(
                           receiverId: widget.otherUserId,
                           content: 'updated the chat theme',
@@ -1155,6 +1216,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                               val,
                             );
                         if (mounted) {
+                          setState(() {});
                           final themeTitle = val == 'preset_emerald'
                               ? 'Emerald'
                               : val == 'preset_crimson'
@@ -1169,6 +1231,30 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           );
                         }
                       } else if (val == 'reset_wallpaper') {
+                        final previousWallpaperUrl = sharedWallpaper ??
+                            themeSettings.chatWallpapers[widget.otherUserId];
+                        final client = SupabaseService.clientOrNull;
+                        if (previousWallpaperUrl != null && previousWallpaperUrl.contains('/media/')) {
+                          try {
+                            final uri = Uri.parse(previousWallpaperUrl);
+                            final segments = uri.pathSegments;
+                            final mediaIdx = segments.indexOf('media');
+                            if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
+                              final oldPath = segments.sublist(mediaIdx + 1).join('/');
+                              await client?.storage.from('media').remove([oldPath]);
+                            }
+                          } catch (_) {}
+                        }
+
+                        final myId = client?.auth.currentUser?.id;
+                        try {
+                          if (myId != null && client != null) {
+                            await client.from('messages').delete()
+                                .eq('message_type', 'chat_wallpaper')
+                                .or('and(sender_id.eq.$myId,receiver_id.eq.${widget.otherUserId}),and(sender_id.eq.${widget.otherUserId},receiver_id.eq.$myId)');
+                          }
+                        } catch (_) {}
+
                         await ref.read(chatRepositoryProvider).sendMessage(
                           receiverId: widget.otherUserId,
                           content: 'reset the chat theme',
@@ -1177,6 +1263,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                         );
                         await ref.read(themeServiceProvider.notifier).removeChatWallpaper(widget.otherUserId);
                         if (mounted) {
+                          setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('✅ Chat theme reset to default for both!')),
                           );
@@ -1555,6 +1642,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                               return KeyEventResult.ignored;
                                             },
                                             child: TextField(
+                                              autofocus: true,
                                               focusNode: _messageFocusNode,
                                               controller: _messageController,
                                               style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),

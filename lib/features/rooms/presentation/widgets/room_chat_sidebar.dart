@@ -472,6 +472,7 @@ class _RoomSideChatPanelState extends ConsumerState<RoomSideChatPanel> {
                 children: [
                   Expanded(
                     child: TextField(
+                      autofocus: true,
                       focusNode: _chatFocusNode,
                       controller: _chatController,
                       style: const TextStyle(fontSize: 12, color: Colors.white),

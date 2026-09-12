@@ -66,6 +66,12 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
       }
       _onTextChanged(text);
     });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _messageFocusNode.requestFocus();
+      }
+    });
   }
 
   @override
@@ -886,6 +892,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
                         return KeyEventResult.ignored;
                       },
                       child: TextField(
+                        autofocus: true,
                         focusNode: _messageFocusNode,
                         controller: _messageController,
                         style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
