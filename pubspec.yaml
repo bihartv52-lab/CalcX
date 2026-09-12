@@ -58,6 +58,4 @@ flutter_launcher_icons:
   adaptive_icon_background: "#1a1a1a"
   adaptive_icon_foreground: "assets/images/app_icon.png"
 
-dependency_overrides:
-  record_platform_interface: 1.2.0
 
