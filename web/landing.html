@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>CalcX — looks like a calculator. Isn't.</title>
-<meta name="description" content="CalcX is a genuine calculator with an encrypted secret underneath: passcode-gated direct messages, LiveKit HD calls, synced watch parties and multiplayer arcade. Panic restores the math in under 50ms.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23191813'/%3E%3Ctext x='32' y='43' font-family='monospace' font-size='28' font-weight='700' fill='%23FF4D00' text-anchor='middle'%3ECX%3C/text%3E%3C/svg%3E">
+<meta name="description" content="CalcX is a genuine calculator with an encrypted secret underneath: passcode-gated direct messages, HD video calls, synced watch parties and multiplayer arcade. Panic restores the math in under 50ms.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231B1B1D'/%3E%3Ctext x='32' y='22' font-family='Arial,sans-serif' font-size='14' font-weight='800' text-anchor='middle' fill='%23F5F5F5'%3ECalc%3Ctspan fill='%23FF6A00'%3EX%3C/tspan%3E%3C/text%3E%3Crect x='9' y='30' width='17' height='10' rx='3' fill='%23ECECEC'/%3E%3Crect x='29' y='30' width='17' height='10' rx='3' fill='%23ECECEC'/%3E%3Crect x='9' y='43' width='17' height='11' rx='3' fill='%23ECECEC'/%3E%3Crect x='29' y='43' width='17' height='11' rx='3' fill='%23ECECEC'/%3E%3Crect x='49' y='30' width='10' height='24' rx='3' fill='%23FF6A00'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
@@ -41,12 +41,23 @@
   [data-reveal]{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.7,.2,1);transition-delay:var(--d,0s)}
   [data-reveal].in{opacity:1;transform:none}
 
+  /* ---------- logo ---------- */
+  .logo-nav{width:21px;height:21px;flex:none;align-self:center}
+  .logo-foot{width:44px;height:44px;flex:none}
+  .biglogo{width:88px;height:88px;flex:none;filter:drop-shadow(0 14px 24px rgba(0,0,0,.45))}
+  .app-id{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+  .app-id svg{width:40px;height:40px;flex:none}
+  .app-id b{font-size:16px;font-weight:800;display:block;line-height:1.15}
+  .app-id span{font-family:var(--fm);font-size:11px;color:var(--mut);letter-spacing:.04em}
+  .app-id a{color:var(--accent);text-decoration:none}
+  .app-id a:hover{text-decoration:underline}
+
   /* ---------- nav ---------- */
   nav{position:sticky;top:0;z-index:60;background:var(--navbg);backdrop-filter:blur(9px);border-bottom:1px solid var(--line);transition:background-color .3s,border-color .3s}
   .nav-in{display:flex;align-items:center;gap:26px;height:66px}
-  .wordmark{font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--ink);text-decoration:none;display:inline-flex;align-items:baseline}
+  .wordmark{font-weight:800;font-size:20px;letter-spacing:-.02em;color:var(--ink);text-decoration:none;display:inline-flex;align-items:center;gap:9px}
   .wordmark b{color:var(--accent)}
-  .wm-tag{font-family:var(--fm);font-style:normal;font-size:9px;letter-spacing:.14em;border:1px solid var(--line);padding:2px 6px;margin-left:9px;color:var(--mut);position:relative;top:-7px}
+  .wm-tag{font-family:var(--fm);font-style:normal;font-size:9px;letter-spacing:.14em;border:1px solid var(--line);padding:2px 6px;margin-left:9px;color:var(--mut);position:relative;top:-6px}
   .nav-links{display:flex;gap:24px;margin-left:auto}
   .nav-links a{font-family:var(--fm);font-size:11px;letter-spacing:.12em;color:var(--ink2);text-decoration:none;transition:color .2s}
   .nav-links a:hover{color:var(--accent)}
@@ -77,6 +88,7 @@
   .btn-key:hover{transform:translateY(-1px);box-shadow:0 7px 0 var(--ink)}
   .btn-key:active{transform:translateY(5px);box-shadow:0 1px 0 var(--ink)}
   body.unlocked .btn-key{border-color:var(--line);box-shadow:0 6px 0 rgba(242,239,231,.25)}
+  .btn-key.busy{pointer-events:none}
   .btn-ghost{display:inline-flex;align-items:center;gap:9px;font-family:var(--fm);font-size:12.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink);border:1.5px solid var(--ink);padding:14px 19px;text-decoration:none;transition:.2s}
   .btn-ghost:hover{color:var(--accent);border-color:var(--accent)}
   .hero-meta{margin-top:28px;font-family:var(--fm);font-size:11px;letter-spacing:.1em;color:var(--mut);text-transform:uppercase}
@@ -556,14 +568,23 @@
   .dl .btn-key{border-color:#F2EFE7;box-shadow:0 6px 0 #F2EFE7;color:#14130E}
   .dl .btn-key:hover{transform:translateY(-1px);box-shadow:0 7px 0 #F2EFE7}
   .dl .btn-key:active{transform:translateY(5px);box-shadow:0 1px 0 #F2EFE7}
-  .dl .btn-key.busy{pointer-events:none}
-  .dl-row{display:flex;flex-wrap:wrap;align-items:center;gap:30px;margin-top:6px}
+  .dl-row{display:flex;flex-wrap:wrap;align-items:center;gap:30px;margin-top:26px}
+  .dl-bar{width:min(380px,100%);height:4px;background:rgba(242,239,231,.15);margin-top:18px;opacity:0;transition:opacity .3s}
+  .dl-bar.show{opacity:1}
+  .dl-bar i{display:block;height:100%;width:0;background:var(--mint);transition:width .2s linear}
   .dl-meta{font-family:var(--fm);font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:rgba(242,239,231,.55);line-height:2}
   .dl-meta b{color:var(--mint);font-weight:400}
-  .dl-check{margin-top:38px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;max-width:720px}
-  .dl-check .lbl{font-family:var(--fm);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:rgba(242,239,231,.5);flex:none}
-  .dl-check .hash{font-family:var(--fm);font-size:11px;word-break:break-all;color:var(--mint);opacity:.85}
-  .dl-note{margin-top:22px;font-family:var(--fm);font-size:11.5px;letter-spacing:.04em;color:rgba(242,239,231,.45);line-height:1.8}
+  .dl-app{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:4px}
+  .dl-app .dn{font-size:26px;font-weight:800;color:#F2EFE7;letter-spacing:-.02em;line-height:1.15}
+  .dl-app .dv{font-family:var(--fm);font-size:11.5px;letter-spacing:.1em;color:var(--mint);text-transform:uppercase;margin-top:4px}
+  .dl-app .dd{margin-top:9px;display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11.5px;color:rgba(242,239,231,.65);text-decoration:none;border:1px solid rgba(242,239,231,.22);padding:6px 11px;transition:.2s}
+  .dl-app .dd:hover{border-color:#FD7A50;color:#FD7A50}
+  .dl-app .dd svg{width:13px;height:13px}
+  .dl-rel{margin-top:34px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;max-width:720px}
+  .dl-rel .lbl{font-family:var(--fm);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:rgba(242,239,231,.5);flex:none}
+  .dl-rel a{font-family:var(--fm);font-size:11.5px;color:var(--mint);word-break:break-all;text-decoration:none;border-bottom:1px solid rgba(201,240,188,.3);padding-bottom:1px}
+  .dl-rel a:hover{color:#fff}
+  .dl-note{margin-top:22px;font-family:var(--fm);font-size:11.5px;letter-spacing:.04em;color:rgba(242,239,231,.45);line-height:1.8;max-width:60ch}
   .dl-note b{color:var(--mint);font-weight:400}
   .dl-giant{position:absolute;right:-24px;bottom:-38px;font-family:var(--seg);font-size:clamp(110px,17vw,230px);line-height:1;color:rgba(201,240,188,.06);pointer-events:none;user-select:none}
   .spec-row{display:flex;align-items:baseline;gap:14px;padding:13px 0;border-bottom:1px solid rgba(242,239,231,.14)}
@@ -571,11 +592,8 @@
   .spec-row dt{font-family:var(--fm);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,239,231,.5);flex:none}
   .leader{flex:1;border-bottom:1px dotted rgba(242,239,231,.2);transform:translateY(-4px)}
   .spec-row dd{font-family:var(--fm);font-size:13px;text-align:right;max-width:60%}
-  .sig-hash{font-size:10.5px;word-break:break-all;line-height:1.6}
-  .copy-mini{display:inline-grid;place-items:center;width:26px;height:26px;border:1px solid rgba(242,239,231,.25);background:none;color:var(--mint);vertical-align:middle;margin-left:8px;transition:.2s}
-  .copy-mini:hover{background:var(--mint);color:#14130E}
-  .copy-mini svg{width:12px;height:12px}
-  .dl .icon-btn{border-color:rgba(201,240,188,.35)}
+  .spec-a{color:var(--mint);text-decoration:none;border-bottom:1px dotted rgba(201,240,188,.4)}
+  .spec-a:hover{color:#fff}
   .dl .spec-h{font-family:var(--fm);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mint-dim);margin-bottom:14px}
 
   /* ---------- faq ---------- */
@@ -600,6 +618,14 @@
   .f-links a{font-family:var(--fm);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);text-decoration:none;display:inline-flex;align-items:center;gap:7px;transition:color .2s;justify-self:start}
   .f-links a:hover{color:var(--accent)}
   .f-links svg{width:12px;height:12px}
+  .f-credit{display:flex;gap:13px;align-items:flex-start}
+  .fc-t{font-size:15px;font-weight:700}
+  .fc-t a{color:var(--accent);text-decoration:none}
+  .fc-t a:hover{text-decoration:underline}
+  .fc-sub{font-family:var(--fm);font-size:10.5px;color:var(--mut);margin-top:4px}
+  .fc-ig{margin-top:9px;display:inline-flex;align-items:center;gap:7px;font-family:var(--fm);font-size:11px;letter-spacing:.08em;color:var(--ink2);text-decoration:none;border:1px solid var(--line);padding:6px 10px;transition:.2s}
+  .fc-ig:hover{border-color:var(--accent);color:var(--accent)}
+  .fc-ig svg{width:13px;height:13px}
   .f-giant{font-weight:800;font-size:clamp(88px,17vw,224px);line-height:.8;letter-spacing:-.02em;text-align:center;color:transparent;-webkit-text-stroke:1.5px var(--line);user-select:none;margin-top:clamp(36px,6vh,64px);transition:color .35s,-webkit-text-stroke-color .35s;cursor:default}
   .f-giant:hover{color:var(--accent);-webkit-text-stroke-color:var(--accent)}
   .f-bot{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:clamp(28px,4vh,48px);padding-block:20px;font-family:var(--fm);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
@@ -631,7 +657,7 @@
   @media (max-width:980px){
     .hero-grid{grid-template-columns:1fr;padding-top:44px}
     .hero-demo{order:2}
-    .grid-75,.grid-58,.dl-grid{grid-template-columns:1fr}
+    .grid-75,.dl-grid{grid-template-columns:1fr}
     .soc-grid{grid-template-columns:1fr}
     .cmp-row{grid-template-columns:1fr 1fr}
     .cmp-l{grid-column:1/-1;padding-bottom:2px;color:var(--ink2)}
@@ -663,12 +689,31 @@
 </head>
 <body>
 
+<!-- ===== CalcX app logo (inline SVG recreation — swap for <img src="logo.png"> if you prefer) ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="calcx-logo" viewBox="0 0 128 128">
+    <rect width="128" height="128" rx="30" fill="#1B1B1D"/>
+    <text x="64" y="42" text-anchor="middle" font-family="'Bricolage Grotesque',Arial,sans-serif" font-size="26" font-weight="800" letter-spacing="-1" fill="#F5F5F5">Calc<tspan fill="#FF6A00">X</tspan></text>
+    <rect x="16" y="56" width="30" height="26" rx="7" fill="#ECECEC"/>
+    <rect x="52" y="56" width="30" height="26" rx="7" fill="#ECECEC"/>
+    <rect x="16" y="88" width="30" height="26" rx="7" fill="#ECECEC"/>
+    <rect x="52" y="88" width="30" height="26" rx="7" fill="#ECECEC"/>
+    <rect x="88" y="56" width="24" height="58" rx="7" fill="#FF6A00"/>
+    <path d="M31 62.5v13M24.5 69h13" stroke="#1B1B1D" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+    <path d="M60.5 69h13" stroke="#1B1B1D" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+    <path d="M26 95l10 10M36 95l-10 10" stroke="#1B1B1D" stroke-width="3.2" stroke-linecap="round" fill="none"/>
+    <path d="M60.5 101h13" stroke="#1B1B1D" stroke-width="3.4" stroke-linecap="round" fill="none"/>
+    <circle cx="67" cy="94.5" r="2.3" fill="#1B1B1D"/><circle cx="67" cy="107.5" r="2.3" fill="#1B1B1D"/>
+    <path d="M93.5 77.5h13M93.5 92.5h13" stroke="#FFF7F2" stroke-width="3.6" stroke-linecap="round" fill="none"/>
+  </symbol>
+</svg>
+
 <div id="sweep"></div>
 
 <!-- ======================= NAV ======================= -->
 <nav>
   <div class="wrap nav-in">
-    <a class="wordmark" href="#top">CALC<b>X</b><i class="wm-tag">STEALTH</i></a>
+    <a class="wordmark" href="#top"><svg class="logo-nav"><use href="#calcx-logo"/></svg>CALC<b>X</b><i class="wm-tag">STEALTH</i></a>
     <span class="state-chip" id="navState"><span class="dot"></span><span id="navStateTxt">DISGUISED</span></span>
     <div class="nav-links">
       <a href="#stealth">Disguise</a>
@@ -678,7 +723,7 @@
       <a href="#arcade">Arcade</a>
     </div>
     <button class="panic-btn" id="navPanic"><i data-lucide="zap"></i>PANIC</button>
-    <a class="btn btn-solid" href="#download" style="padding:10px 14px;font-size:11px">Get the APK</a>
+    <a class="btn btn-solid" data-dl href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk" style="padding:10px 14px;font-size:11px"><span>Get the APK</span></a>
   </div>
 </nav>
 
@@ -686,14 +731,18 @@
 <header class="hero" id="top">
   <div class="wrap hero-grid">
     <div class="hero-copy">
-      <p class="kicker" data-reveal>Stealth communication suite · v1.0.1</p>
+      <div class="app-id" data-reveal>
+        <svg><use href="#calcx-logo"/></svg>
+        <div><b>CalcX</b><span>v1.0.1 · developed by <a href="https://www.instagram.com/__adarsh._.008" target="_blank" rel="noopener">Adarsh</a></span></div>
+      </div>
+      <p class="kicker" data-reveal>Stealth communication suite · Android APK</p>
       <h1 data-reveal style="--d:.07s">Looks like math.<br><em>Isn&rsquo;t.</em></h1>
-      <p class="hero-sub" data-reveal style="--d:.14s">CalcX is a genuine calculator — decimals, percentages, a real history tape. But type your passcode formula (<code>1234=</code>) and the keypad dissolves into an encrypted hub: direct messages, LiveKit HD calls, synced movie nights, multiplayer arcade. One tap of panic, and it&rsquo;s math again in under 50&nbsp;ms.</p>
+      <p class="hero-sub" data-reveal style="--d:.14s">CalcX is a genuine calculator — decimals, percentages, a real history tape. But type your passcode formula (<code>1234=</code>) and the keypad dissolves into an encrypted hub: direct messages, HD video calls, synced movie nights, multiplayer arcade. One tap of panic, and it&rsquo;s math again in under 50&nbsp;ms.</p>
       <div class="cta-row" data-reveal style="--d:.21s">
-        <a class="btn-key" href="#download"><i data-lucide="arrow-down"></i> Download APK — 111.5 MB</a>
+        <a class="btn-key" data-dl data-pct href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk"><i data-lucide="arrow-down"></i> <span class="dl-txt">Download APK — v1.0.1</span></a>
         <a class="btn-ghost" href="https://calcx-web.vercel.app/" target="_blank" rel="noopener">Open the web app <i data-lucide="arrow-up-right"></i></a>
       </div>
-      <p class="hero-meta" data-reveal style="--d:.28s">Android 8.0+<b>·</b>LiveKit WebRTC<b>·</b>Supabase realtime<b>·</b>panic &lt; 50 ms</p>
+      <p class="hero-meta" data-reveal style="--d:.28s">Android APK · 111.5 MB<b>·</b>HD video calls<b>·</b>real-time sync<b>·</b>panic &lt; 50 ms</p>
     </div>
 
     <div class="hero-demo" data-reveal style="--d:.18s">
@@ -752,7 +801,7 @@
                 <div class="hub-callwrap">
                   <div class="hub-bigava">M</div>
                   <div class="hub-callnm">Maya K.</div>
-                  <span class="hub-chip">LIVEKIT · 1080P · <span id="hubCallTimer">00:12</span></span>
+                  <span class="hub-chip">HD VIDEO · 1080P · <span id="hubCallTimer">00:12</span></span>
                   <div class="hub-ctrl">
                     <button><i data-lucide="mic"></i></button>
                     <button><i data-lucide="video"></i></button>
@@ -807,7 +856,7 @@
 <div class="marquee" aria-hidden="true">
   <div class="mq-track" id="mqTrack">
     <div class="mq-set">
-      <span>Calculator disguise</span><b>·</b><span>Passcode formula</span><b>·</b><span>Panic &lt; 50 ms</span><b>·</b><span>Masked notifications</span><b>·</b><span>Optimistic DMs</span><b>·</b><span>Voice-note waveforms</span><b>·</b><span>LiveKit HD calls</span><b>·</b><span>Frosted in-call chat</span><b>·</b><span>Synced watch parties</span><b>·</b><span>Scribble</span><b>·</b><span>Ludo</span><b>·</b><span>Biometric unlock</span><b>·</b>
+      <span>Calculator disguise</span><b>·</b><span>Passcode formula</span><b>·</b><span>Panic &lt; 50 ms</span><b>·</b><span>Masked notifications</span><b>·</b><span>Optimistic DMs</span><b>·</b><span>Voice-note waveforms</span><b>·</b><span>HD video calls</span><b>·</b><span>Frosted in-call chat</span><b>·</b><span>Synced watch parties</span><b>·</b><span>Scribble</span><b>·</b><span>Ludo</span><b>·</b><span>Biometric unlock</span><b>·</b>
     </div>
   </div>
 </div>
@@ -883,7 +932,6 @@
     </div>
 
     <div class="grid-75">
-      <!-- interactive chat -->
       <div class="chat-card card" id="chatCard" data-reveal data-wall="">
         <div class="chat-head">
           <span class="ava">M<span class="on-dot"></span></span>
@@ -942,7 +990,6 @@
         </div>
       </div>
 
-      <!-- features -->
       <div class="flites" data-reveal style="--d:.1s">
         <div class="flite"><span class="fic"><i data-lucide="zap"></i></span>
           <div><h4>Instant optimistic sending</h4><p>Bubbles appear in under 100&nbsp;ms with a pending clock, then flip to double-ticks when the server confirms. Type the message above and watch the ticks.</p></div></div>
@@ -968,11 +1015,10 @@
     <div class="sec-head" data-reveal>
       <span class="sec-idx">§ 03</span>
       <h2>Studio calls, mixer included</h2>
-      <p class="sec-sub">LiveKit WebRTC carries low-latency 1080p/720p video and crystal audio — with controls most &ldquo;big&rdquo; apps still don&rsquo;t ship.</p>
+      <p class="sec-sub">HD video calls carries low-latency 1080p/720p video and crystal audio — with controls most &ldquo;big&rdquo; apps still don&rsquo;t ship.</p>
     </div>
 
     <div class="grid-75">
-      <!-- frosted overlay + minimize demo -->
       <div class="card" data-reveal>
         <div class="card-h"><i data-lucide="video"></i>Frosted in-call chat
           <span class="right"><button class="txtbtn" id="frostToggle"><i data-lucide="message-circle"></i>Chat overlay</button></span>
@@ -982,7 +1028,7 @@
           <div class="stage-c" id="stageC">
             <div class="bigava">M</div>
             <div class="stage-nm">Maya K.</div>
-            <div class="stage-sub">LIVEKIT WEBRTC · <span id="callTimer">00:42</span></div>
+            <div class="stage-sub">HD VIDEO · <span id="callTimer">00:42</span></div>
             <div class="stage-meters" id="callMeters"></div>
             <div class="stage-ctrl">
               <button id="micBtn" title="Mute"><i data-lucide="mic"></i></button>
@@ -1009,7 +1055,6 @@
         <p class="caption">The video stays live behind the frosted overlay — type without losing the call. Minimized calls collapse into a floating bar while you browse the whole shell.</p>
       </div>
 
-      <!-- mixer -->
       <div class="card" data-reveal style="--d:.1s">
         <div class="card-h"><i data-lucide="sliders-horizontal"></i>Sound mixer</div>
         <div id="mixRows"></div>
@@ -1024,7 +1069,6 @@
       </div>
     </div>
 
-    <!-- call history -->
     <div class="card" data-reveal style="margin-top:clamp(16px,2vw,24px)">
       <div class="card-h"><i data-lucide="history"></i>Call history<span class="right"><span class="chip">ONE-TAP DELETE · RLS-GUARDED</span></span></div>
       <div id="histList"></div>
@@ -1107,7 +1151,6 @@
     </div>
 
     <div class="grid-75">
-      <!-- scribble -->
       <div class="card" data-reveal>
         <div class="card-h"><i data-lucide="pencil"></i>Scribble
           <span class="right"><span class="chip hot" id="roundChip">ROUND 3 · MAYA DRAWS</span><span class="chip">WORD: M _ N _ E _</span></span>
@@ -1132,7 +1175,6 @@
         <p class="caption">Your cursor joins the live room canvas — multi-color palette, brush sizes, undo/clear, turn-based rounds with automatic scoring. Idle for a moment and a spectator&rsquo;s ghost stroke takes over.</p>
       </div>
 
-      <!-- ludo -->
       <div class="card" data-reveal style="--d:.1s">
         <div class="card-h"><i data-lucide="dices"></i>Ludo multiplayer<span class="right"><span class="chip">2–4 PLAYERS</span><span class="chip hot">VOICE ON</span></span></div>
         <button class="die" id="die" title="Roll the die"></button>
@@ -1222,7 +1264,7 @@
       <div class="cmp-row"><div class="cmp-l">Instant panic disguise</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
       <div class="cmp-row"><div class="cmp-l">DMs &amp; dual wallpapers</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
       <div class="cmp-row"><div class="cmp-l">Voice notes &amp; waveforms</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
-      <div class="cmp-row"><div class="cmp-l">LiveKit calls &amp; sound mixer</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
+      <div class="cmp-row"><div class="cmp-l">HD video calls &amp; sound mixer</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
       <div class="cmp-row"><div class="cmp-l">Frosted in-call chat</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
       <div class="cmp-row"><div class="cmp-l">Cinema watch-party sync</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
       <div class="cmp-row"><div class="cmp-l">Scribble &amp; Ludo arcade</div><div class="c-a"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div><div class="c-b"><span class="pt-yes"><i data-lucide="check"></i>YES</span></div></div>
@@ -1239,30 +1281,35 @@
       <div class="sec-head" data-reveal>
         <span class="sec-idx">§ 08</span>
         <h2>Take the whole secret</h2>
-        <p class="sec-sub">One APK, 111.5 MB. The calculator comes free with the clubhouse.</p>
+        <p class="sec-sub">One tap — the APK downloads right here, no tabs, no redirects. The calculator comes free with the clubhouse.</p>
       </div>
+
+      <div class="dl-app" data-reveal>
+        <svg class="biglogo"><use href="#calcx-logo"/></svg>
+        <div>
+          <div class="dn">CalcX</div>
+          <div class="dv">v1.0.1 · stable · Android</div>
+          <a class="dd" href="https://www.instagram.com/__adarsh._.008" target="_blank" rel="noopener"><i data-lucide="instagram"></i>Developed by Adarsh — @__adarsh._.008</a>
+        </div>
+      </div>
+
       <div class="dl-row" data-reveal style="--d:.08s">
-        <a class="btn-key" id="dlBtn" href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk" download="CalcX.apk"><i data-lucide="arrow-down"></i><span id="dlLabel">Download APK — 111.5 MB</span></a>
-        <p class="dl-meta">v1.0.1 · build 101 · stable<br>Android <b>8.0+</b> · arm64-v8a · LiveKit + Supabase</p>
+        <a class="btn-key" id="dlMain" data-dl data-pct href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk"><i data-lucide="arrow-down"></i><span class="dl-txt">Download CalcX.apk — 111.5 MB</span></a>
+        <p class="dl-meta">v1.0.1 · Direct APK download<br>Android APK · HD video calls + real-time sync</p>
       </div>
-      <div class="dl-check" data-reveal style="--d:.14s">
-        <span class="lbl">SHA-256</span>
-        <span class="hash">00b39c4827f84724ca7f01e1a388c48da6c1942ae72b615bec691bd50f9ea77f</span>
-        <button class="icon-btn" id="hashCopy" title="Copy checksum"><i data-lucide="copy"></i></button>
-      </div>
-      <p class="dl-note" data-reveal style="--d:.2s">Every build publishes its hash — verify before you install. <b>Choose a passcode formula you&rsquo;ll never forget:</b> the disguise has no &ldquo;forgot password&rdquo; link, and that&rsquo;s deliberate. Live APK page: <b>calcx.vercel.app</b> · Web app: <b>calcx-web.vercel.app</b></p>
+      <div class="dl-bar" id="dlBar"><i id="dlFill"></i></div>
+<p class="dl-note" data-reveal style="--d:.2s">Grab it, sideload it, and choose a passcode formula you&rsquo;ll never forget — the disguise has no &ldquo;forgot password&rdquo;, and that&rsquo;s deliberate. Download the current APK directly from this page. Web app: <b>calcx-web.vercel.app</b></p>
     </div>
+
     <div data-reveal style="--d:.1s">
       <p class="spec-h" style="margin-top:8px">Fine print, published</p>
       <dl>
-        <div class="spec-row"><dt>Package</dt><span class="leader"></span><dd>com.calcx.android</dd></div>
-        <div class="spec-row"><dt>Version</dt><span class="leader"></span><dd>1.0.1 (build 101)</dd></div>
-        <div class="spec-row"><dt>Size</dt><span class="leader"></span><dd>111.5 MB</dd></div>
-        <div class="spec-row"><dt>Min SDK</dt><span class="leader"></span><dd>Android 8.0 (API 26)</dd></div>
-        <div class="spec-row"><dt>Realtime</dt><span class="leader"></span><dd>LiveKit WebRTC · Supabase</dd></div>
-        <div class="spec-row"><dt>Storage</dt><span class="leader"></span><dd>Supabase buckets · RLS</dd></div>
-        <div class="spec-row"><dt>Ads / trackers</dt><span class="leader"></span><dd>0 / 0</dd></div>
-        <div class="spec-row"><dt>Signature</dt><span class="leader"></span><dd><span class="sig-hash">00b39c48…50f9ea77f</span></dd></div>
+        <div class="spec-row"><dt>Version</dt><span class="leader"></span><dd>1.0.1 (stable)</dd></div>
+        <div class="spec-row"><dt>Size</dt><span class="leader"></span><dd>111.5 MB · APK</dd></div>
+        <div class="spec-row"><dt>Platform</dt><span class="leader"></span><dd>Android</dd></div><div class="spec-row"><dt>Distribution</dt><span class="leader"></span><dd>Direct APK download</dd></div>
+        <div class="spec-row"><dt>Realtime</dt><span class="leader"></span><dd>HD video calls · real-time sync</dd></div>
+        <div class="spec-row"><dt>Web app</dt><span class="leader"></span><dd><a class="spec-a" href="https://calcx-web.vercel.app/" target="_blank" rel="noopener">calcx-web.vercel.app</a></dd></div>
+        <div class="spec-row"><dt>Developer</dt><span class="leader"></span><dd><a class="spec-a" href="https://www.instagram.com/__adarsh._.008" target="_blank" rel="noopener">Adarsh</a></dd></div>
       </dl>
     </div>
   </div>
@@ -1292,7 +1339,7 @@
       </div>
       <div class="faq-item">
         <button class="faq-q"><span class="n">Q.4</span><h3>How do calls and watch parties hold up?</h3><i data-lucide="chevron-down"></i></button>
-        <div class="faq-a"><div><p>Calls run on LiveKit WebRTC — low-latency audio and 1080p/720p video with per-participant volume control. Watch parties sync play, pause and seek via Supabase Realtime broadcast in under 500&nbsp;ms, with millisecond drift measurement and automatic correction, over YouTube, direct streams or local files.</p></div></div>
+        <div class="faq-a"><div><p>Calls run on HD video calls — low-latency audio and 1080p/720p video with per-participant volume control. Watch parties sync play, pause and seek via real-time sync broadcast in under 500&nbsp;ms, with millisecond drift measurement and automatic correction, over YouTube, direct streams or local files.</p></div></div>
       </div>
       <div class="faq-item">
         <button class="faq-q"><span class="n">Q.5</span><h3>I forgot my passcode formula. Now what?</h3><i data-lucide="chevron-down"></i></button>
@@ -1307,20 +1354,27 @@
   <div class="wrap">
     <div class="f-top">
       <div>
-        <a class="wordmark" href="#top" style="font-size:26px">CALC<b>X</b><i class="wm-tag">STEALTH</i></a>
+        <a class="wordmark" href="#top" style="font-size:26px"><svg class="logo-nav" style="width:28px;height:28px"><use href="#calcx-logo"/></svg>CALC<b>X</b><i class="wm-tag">STEALTH</i></a>
         <p class="f-tag">It&rsquo;s just a calculator. Obviously.</p>
       </div>
       <div class="f-links">
         <a href="https://calcx-web.vercel.app/" target="_blank" rel="noopener">Web version <i data-lucide="arrow-up-right"></i></a>
-        <a href="https://calcx.vercel.app" target="_blank" rel="noopener">APK download page <i data-lucide="arrow-up-right"></i></a>
-        <a href="#download">Release &amp; checksum <i data-lucide="arrow-down"></i></a>
+        <a data-dl href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk">Download the APK · v1.0.1 <i data-lucide="arrow-down"></i></a>
         <a href="#stealth">How the disguise works <i data-lucide="arrow-up-right"></i></a>
+      </div>
+      <div class="f-credit">
+        <svg class="logo-foot"><use href="#calcx-logo"/></svg>
+        <div>
+          <div class="fc-t">Developed by <a href="https://www.instagram.com/__adarsh._.008" target="_blank" rel="noopener">Adarsh</a></div>
+          <div class="fc-sub">CalcX v1.0.1 — stealth communication suite</div>
+          <a class="fc-ig" href="https://www.instagram.com/__adarsh._.008" target="_blank" rel="noopener"><i data-lucide="instagram"></i>@__adarsh._.008</a>
+        </div>
       </div>
     </div>
     <div class="f-giant" aria-hidden="true">CALCX</div>
     <div class="f-bot">
-      <span>© 2025 CalcX — built stealth-first</span>
-      <span>APK v1.0.1 · 111.5 MB · panic &lt; 50 ms</span>
+      <span>© 2025 CalcX — developed by Adarsh</span>
+      <span>APK v1.0.1 · GitHub Releases · panic &lt; 50 ms</span>
     </div>
   </div>
 </footer>
@@ -1345,7 +1399,8 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const CHECKSUM = '00b39c4827f84724ca7f01e1a388c48da6c1942ae72b615bec691bd50f9ea77f';
+const APK_URL = 'https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk';
+const APK_NAME = 'CalcX.apk';
 
 /* ================= TOASTS ================= */
 function toast(msg, icon = 'check'){
@@ -1367,6 +1422,97 @@ async function copyText(text, msg){
   }
   toast(msg, 'copy');
 }
+
+/* ================= ONE-CLICK APK DOWNLOAD =================
+   Click → in-page download, zero navigation:
+   · Desktop: streams the APK with a live % on the button + progress bar,
+     then saves via a blob (download attribute, no tab change).
+   · Mobile / CORS-blocked: invisible <iframe> hits the URL — GitHub
+     answers with Content-Disposition:attachment, so the native download
+     manager grabs it while this page never moves.                        */
+const FORCE_IFRAME = matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
+let dlBusy = false;
+
+function iframeDownload(url){
+  const f = document.createElement('iframe');
+  f.style.cssText = 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
+  f.setAttribute('aria-hidden', 'true');
+  f.src = url;
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 10 * 60 * 1000);
+}
+
+async function startApk(btn){
+  if (dlBusy){ toast('Download already running — one at a time', 'loader'); return; }
+  dlBusy = true;
+  btn.classList.add('busy');
+
+  const label = btn.querySelector('.dl-txt');
+  const orig  = label ? label.textContent : '';
+  const bar   = $('#dlBar'), fill = $('#dlFill');
+  const showPct = btn.hasAttribute('data-pct');
+
+  if (bar) bar.classList.add('show');
+  if (fill) fill.style.width = '0%';
+  toast('Download started — CalcX v1.0.1 (111.5 MB)', 'arrow-down');
+
+  const setPct = p => {
+    if (showPct && label) label.textContent = 'Downloading… ' + Math.floor(p) + '%';
+    if (fill) fill.style.width = p + '%';
+  };
+
+  const finish = (msg, icon) => {
+    if (showPct && label) label.textContent = 'Saved — CalcX.apk ✓';
+    if (fill) fill.style.width = '100%';
+    toast(msg, icon);
+    setTimeout(() => {
+      if (label) label.textContent = orig;
+      if (bar) bar.classList.remove('show');
+      if (fill) fill.style.width = '0%';
+      btn.classList.remove('busy');
+      dlBusy = false;
+    }, 4200);
+  };
+
+  if (FORCE_IFRAME){
+    iframeDownload(APK_URL);
+    finish('Download running in your browser\u2019s download manager', 'arrow-down');
+    return;
+  }
+
+  try {
+    const res = await fetch(APK_URL, { mode: 'cors' });
+    if (!res.ok) throw new Error('http ' + res.status);
+    const reader = res.body && res.body.getReader ? res.body.getReader() : null;
+    if (!reader) throw new Error('no-stream');
+
+    const total = +res.headers.get('content-length') || 0;
+    const chunks = []; let got = 0;
+    for (;;){
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      if (total) setPct(got / total * 100);
+      else if (showPct && label) label.textContent = 'Downloading… ' + (got / 1048576).toFixed(0) + ' MB';
+    }
+
+    const blob = new Blob(chunks, { type: 'application/vnd.android.package-archive' });
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u; a.download = APK_NAME;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(u), 20000);
+    finish('CalcX.apk saved — check your downloads', 'check');
+  } catch (err) {
+    /* CORS or streaming unsupported → silent iframe fallback, still zero navigation */
+    iframeDownload(APK_URL);
+    finish('Download running in your browser\u2019s download manager', 'arrow-down');
+  }
+}
+ $$('[data-dl]').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();          /* never navigate — the page stays put */
+  startApk(a);
+}));
 
 /* ================= CALCULATOR ENGINE ================= */
 const FUNCS = [
@@ -1589,7 +1735,7 @@ document.addEventListener('keydown', e => {
   if (v !== null){ insert(v); flashKey(v); e.preventDefault(); return; }
   if (key === '=' || key === 'Enter'){ equals(); flashKey('='); e.preventDefault(); }
   else if (key === 'Backspace'){ backspace(); flashKey('⌫'); e.preventDefault(); }
-  else if (key === 'Escape' || key === 'Delete'){ clearAll(); flashKey('AC'); e.preventDefault(); }
+  else if (key === 'Delete'){ clearAll(); flashKey('AC'); e.preventDefault(); }
 });
 function flashKey(v){
   const b = keypadEl.querySelector(`[data-val="${v === '=' ? '' : v}"][data-action="${v === '=' ? 'eq' : 'ins'}"]`)
@@ -1669,7 +1815,6 @@ function rollTo(el, str){
   }, 40);
 }
  $('#bandCopy').addEventListener('click', () => copyText(lastStr, 'Result copied to clipboard'));
- $('#hashCopy').addEventListener('click', () => copyText(CHECKSUM, 'SHA-256 checksum copied'));
 
 /* hub tab auto-tour */
 let hubIdx = 0, manualHold = 0;
@@ -1717,7 +1862,6 @@ masked.addEventListener('click', e => {
 });
  $('#mX').addEventListener('click', hideMasked);
  $('#simNotif').addEventListener('click', showMasked);
-/* occasional automatic masked alert while disguised (capped) */
 if (!RM) setTimeout(function auto(){
   if (maskedCount < 3 && !bodyUnlocked() && !document.hidden) showMasked();
   if (maskedCount < 3) setTimeout(auto, 17000);
@@ -1726,14 +1870,12 @@ if (!RM) setTimeout(function auto(){
 /* ================= CHAT DEMO ================= */
 const chatMsgs = $('#chatMsgs'), chatInput = $('#chatInput'), typingEl = $('#typing');
 const acts = `<span class="bacts"><button data-act="reply" title="Reply"><i data-lucide="reply"></i></button><button data-act="forward" title="Forward"><i data-lucide="forward"></i></button><button data-act="react" title="React"><i data-lucide="smile"></i></button></span>`;
-/* voice-note waveform bars */
 const vnBars = $('#vnBars');
 for (let i = 0; i < 26; i++){
   const s = document.createElement('span');
   s.style.height = (4 + Math.round(Math.random() * 14)) + 'px';
   vnBars.appendChild(s);
 }
-/* voice note playback */
 const vnPlay = $('#vnPlay'), vnTime = $('#vnTime');
 let vnPlaying = false, vnT = 0, vnIv = null;
 vnPlay.addEventListener('click', () => {
@@ -1754,17 +1896,14 @@ vnPlay.addEventListener('click', () => {
     }, 100);
   }, 550);
 });
-/* wallpaper chips */
  $$('.wall-chip').forEach(c => c.addEventListener('click', () => {
   $$('.wall-chip').forEach(x => x.classList.remove('on'));
   c.classList.add('on');
   $('#chatCard').dataset.wall = c.dataset.wall;
 }));
-/* reply chip */
 let replyTxt = '';
 function setReply(t){ replyTxt = t; $('#replyTxt').textContent = 'Replying to: ' + t; $('#replyChip').classList.add('show'); }
  $('#replyX').addEventListener('click', () => { replyTxt = ''; $('#replyChip').classList.remove('show'); });
-/* reactions / acts delegation */
 chatMsgs.addEventListener('click', e => {
   const actBtn = e.target.closest('.bacts button');
   const rBtn = e.target.closest('.rrow button');
@@ -1801,12 +1940,10 @@ chatMsgs.addEventListener('click', e => {
     lucide.createIcons();
   }
 });
-/* search filter */
  $('#chatSearch').addEventListener('input', e => {
   const q = e.target.value.trim().toLowerCase();
   $$('#chatMsgs .bub').forEach(b => b.classList.toggle('srch-dim', !!q && !b.textContent.toLowerCase().includes(q)));
 });
-/* optimistic send + bot */
 const BOT = ['on my way — save me a seat', 'wait the twist?? call me', 'sending the link now', '10 works. bringing snacks', 'no spoilers, I mean it'];
 let botIdx = 0;
 function sendChat(){
@@ -1841,7 +1978,6 @@ function sendChat(){
 chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
 /* ================= CALL DEMO ================= */
-/* stage meters */
 const cm = $('#callMeters');
 for (let i = 0; i < 16; i++){
   const s = document.createElement('span');
@@ -1888,7 +2024,6 @@ let micOff = false;
   toast('Call ended — logged to history', 'phone-off');
   addHist('outgoing', 'Maya K.', 'just now', '00:00');
 });
-/* mixer */
 const MIXERS = [
   { n: 'You', role: 'mic · host', ini: 'K', vol: 85, self: true },
   { n: 'Maya K.', role: 'remote stream', ini: 'M', vol: 80, self: false },
@@ -1927,7 +2062,6 @@ setInterval(() => {
   b.classList.add('on');
   toast('Audio output → ' + b.dataset.out, b.dataset.out === 'speaker' ? 'volume-2' : 'ear');
 }));
-/* history */
 const HIST = [
   ['in', 'Maya K.', 'Yesterday 21:04', '24:31', true],
   ['out', 'Dev S.', 'Yesterday 18:22', '08:02', true],
@@ -1956,7 +2090,7 @@ HIST.forEach(h => addHist(...h));
 });
 
 /* ================= CINEMA ================= */
-const DUR = 7140; /* 1:59:00 */
+const DUR = 7140;
 let filmSec = 42 * 60 + 10, playing = false, cineIv = null, driftIv = null;
 const PEERS = [['M', 'Maya'], ['D', 'Dev'], ['R', 'Riya'], ['K', 'Kai']];
  $('#peerRows').innerHTML = PEERS.map((p, i) => `
@@ -1990,7 +2124,7 @@ function setCine(play){
     driftIv = setInterval(() => {
       drifts.forEach((d, i) => {
         d += Math.random() * 16 - 7;
-        if (d > 34){ d = Math.random() * 3; } /* auto drift correction */
+        if (d > 34){ d = Math.random() * 3; }
         drifts[i] = Math.max(0, d);
       });
       renderDrifts();
@@ -2019,15 +2153,13 @@ function setCine(play){
   lucide.createIcons();
   toast(on ? 'Player floating — chat stays live' : 'Player docked back', 'picture-in-picture');
 });
-/* speaking cycle in party voice */
  $('#voiceStrip').innerHTML = PEERS.map(p => `<span class="vname">${p[1]}</span>`).join('');
 setInterval(() => {
   const names = $$('#voiceStrip .vname');
   names.forEach(n => n.classList.remove('spk'));
   if (playing) names[Math.floor(Math.random() * names.length)]?.classList.add('spk');
 }, 1900);
-/* room chat */
-const RC_POOL = ['dev: the ripple cut. come on.', 'maya: rewind 10s?', 'riya: voice check, am I crackly?', 'kai: peak scene incoming', 'dev: shhh it\'s happening'];
+const RC_POOL = ['dev: the ripple cut. come on.', 'maya: rewind 10s?', 'riya: voice check, am I crackly?', 'kai: peak scene incoming', "dev: shhh it's happening"];
 let rcIdx = 0;
 setInterval(() => {
   if (document.hidden || playing === false && Math.random() > 0.5) return;
@@ -2096,7 +2228,6 @@ addEventListener('pointerup', () => cur = null);
 }));
  $('#undoBtn').addEventListener('click', () => { strokes.pop(); ghostT = 0; redraw(); lastAct = Date.now(); });
  $('#clearBtn').addEventListener('click', () => { strokes = []; ghostT = 0; redraw(); lastAct = Date.now(); toast('Canvas cleared', 'trash-2'); });
-/* spectator ghost stroke */
 let ghostT = 0, lastAct = Date.now();
 setInterval(() => {
   if (Date.now() - lastAct < 4000 || RM) return;
@@ -2219,7 +2350,6 @@ function acceptReq(row, name, auto){
   toast('Incoming friend request', 'user-plus');
 });
 addRequest(REQ_POOL[0][0], REQ_POOL[0][1]);
-/* avatar upload */
  $('#avatar').addEventListener('click', () => $('#avaFile').click());
  $('#avaFile').addEventListener('change', e => {
   const f = e.target.files[0]; if (!f) return;
@@ -2237,85 +2367,6 @@ addRequest(REQ_POOL[0][0], REQ_POOL[0][1]);
     ? 'Private room — ask the host for the code'
     : `Joined ${b.dataset.room} — voice connected`, 'volume-2');
 }));
-
-/* ================= DOWNLOAD ================= */
-const NOTES = [
-'CALCX FOR ANDROID - RELEASE NOTES',
-'=================================',
-'Build    : 1.0.1 (101)  ·  stable / direct-APK',
-'Size     : 111.5 MB  ·  Android 8.0+ (API 26)',
-'Stack    : LiveKit WebRTC (calls) + Supabase Realtime (sync)',
-'',
-'WHAT IT IS',
-'A genuine calculator with an encrypted communication hub behind a',
-'passcode formula. The disguise is the feature.',
-'',
-'STEALTH CORE',
-'- Authentic calculator: arithmetic, history tape, error handling',
-'- Passcode gate (e.g. 1234=) unlocks the private hub',
-'- Session gate: re-locks on cold boot, minimize, refresh',
-'- Panic: snaps back to the calculator in under 50 ms',
-'- Masked notifications: "You have a pending calculation"',
-'- Notification muting for the chat you have open',
-'- Biometric fingerprint unlock + app-switcher privacy blur',
-'',
-'INSIDE THE HUB',
-'- Encrypted direct messaging, optimistic send, voice/video notes,',
-'  dual-orientation wallpapers (Cyberpunk/Emerald/Crimson/Sunset/AMOLED)',
-'- LiveKit HD voice & video, sound mixer, frosted in-call chat,',
-'  call minimization, call history with one-tap delete',
-'- Cinema watch party: <500ms play/pause/seek sync, YouTube/MP4/HLS/',
-'  local sources, party voice, floating PiP',
-'- Arcade: Scribble (live canvas) + Ludo (2-4 players), lobby voice',
-'- Profiles, presence, friends, public/private rooms',
-'',
-'INSTALL (sideload)',
-'1. Settings > Apps > Special access > Install unknown apps:',
-'   allow it for the browser you downloaded with.',
-'2. Open the APK and confirm.',
-'3. Careful people verify the checksum first:',
-'',
-'SHA-256',
-CHECKSUM,
-'',
-'APK direct: https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk',
-'GitHub rel: https://github.com/bihartv52-lab/CalcX/releases/tag/v1.0.1',
-'Web app   : https://calcx-web.vercel.app'
-'Web app  : https://calcx-web.vercel.app'
-].join('\n');
-const APK_DOWNLOAD_URL = 'https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk';
-const dlBtn = $('#dlBtn'), dlLabel = $('#dlLabel');
-let dlBusy = false;
-dlBtn.addEventListener('click', (e) => {
-  if (dlBusy) return;
-  dlBusy = true; dlBtn.classList.add('busy');
-  let p = 0;
-  const iv = setInterval(() => {
-    p = Math.min(100, p + Math.random() * 12 + 10);
-    dlLabel.textContent = 'Verifying hash — ' + Math.floor(p) + '%';
-    if (p >= 100){
-      clearInterval(iv);
-      dlLabel.textContent = 'Starting download…';
-      toast('Downloading CalcX.apk (111.5 MB)', 'arrow-down');
-      
-      const a = document.createElement('a');
-      a.href = APK_DOWNLOAD_URL;
-      a.setAttribute('download', 'CalcX.apk');
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
-      setTimeout(() => {
-        dlLabel.textContent = 'Download started!';
-        setTimeout(() => {
-          dlLabel.textContent = 'Download APK — 111.5 MB';
-          dlBtn.classList.remove('busy');
-          dlBusy = false;
-        }, 1800);
-      }, 800);
-    }
-  }, 35);
-});
 
 /* ================= FAQ / MARQUEE / REVEAL ================= */
  $$('.faq-item').forEach(item => {

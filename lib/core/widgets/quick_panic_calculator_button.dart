@@ -2,6 +2,7 @@ import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
 import 'package:calcx/features/calculator/presentation/calculator_controller.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
+import 'package:calcx/features/calls/data/livekit_call_service.dart';
 import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,7 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 /// A prominent red emergency button that immediately snaps the app back
-/// to the innocent Calculator screen with zero delay.
+/// to the innocent Calculator screen with zero delay, cutting any active calls.
 class QuickPanicCalculatorButton extends ConsumerWidget {
   final double size;
   final EdgeInsetsGeometry? margin;
@@ -26,22 +27,37 @@ class QuickPanicCalculatorButton extends ConsumerWidget {
     // Instant haptic feedback for tactile certainty
     HapticFeedback.heavyImpact();
 
-    // Ensure call screen overlay flags are reset
+    // 1. Immediately cut existing or ongoing direct calls (database status -> ended + LiveKit cleanup)
+    try {
+      ref.read(activeCallSessionProvider.notifier).endCurrentCall();
+    } catch (_) {}
+
+    // 2. Immediately leave any LiveKit room / voice channel / watch party audio
+    try {
+      ref.read(liveKitCallServiceProvider).leaveRoom();
+    } catch (_) {}
+
+    // 3. Ensure call screen overlay flags are reset
     try {
       ref.read(isCallScreenShowingProvider.notifier).state = false;
     } catch (_) {}
 
-    // Re-lock the secret session so calculator passcode is strictly required again
+    // 4. Dismiss any pushed full-screen modal pages (e.g. ActiveCallPage, bottom sheets, dialogs)
+    try {
+      Navigator.of(context, rootNavigator: true).popUntil((route) => route.isFirst);
+    } catch (_) {}
+
+    // 5. Re-lock the secret session so calculator passcode is strictly required again
     try {
       ref.read(calculatorUnlockedProvider.notifier).state = false;
     } catch (_) {}
 
-    // Reset calculator engine to clean innocent state
+    // 6. Reset calculator engine to clean innocent state
     try {
       ref.read(calculatorControllerProvider.notifier).press('AC');
     } catch (_) {}
 
-    // Instantly snap to the Calculator page
+    // 7. Instantly snap to the Calculator page
     try {
       context.go(AppRoutes.calculator);
     } catch (_) {

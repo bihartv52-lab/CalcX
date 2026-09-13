@@ -128,6 +128,65 @@ final replyMessageProvider = FutureProvider.family<Message?, String>((ref, reply
   }
 });
 
+final conversationWallpaperProvider = StreamProvider.family<String?, String>((ref, otherUserId) {
+  final supabase = SupabaseService.clientOrNull;
+  if (supabase == null) return const Stream.empty();
+  final myId = supabase.auth.currentUser?.id;
+  if (myId == null) return const Stream.empty();
+
+  final controller = StreamController<String?>();
+
+  Future<void> fetchLatestWallpaper() async {
+    try {
+      final res = await supabase
+          .from('messages')
+          .select('media_url')
+          .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
+          .filter('room_id', 'is', null)
+          .eq('message_type', 'chat_wallpaper')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (controller.isClosed) return;
+      if (res != null && res['media_url'] != null) {
+        final url = res['media_url'] as String;
+        controller.add(url == 'reset' ? null : url);
+      } else {
+        controller.add(null);
+      }
+    } catch (e) {
+      debugPrint('Error fetching conversation wallpaper: $e');
+    }
+  }
+
+  fetchLatestWallpaper();
+
+  final channel = supabase.channel('wp_${myId}_$otherUserId');
+  channel.onPostgresChanges(
+    event: PostgresChangeEvent.all,
+    schema: 'public',
+    table: 'messages',
+    callback: (payload) {
+      final record = payload.newRecord;
+      if (record['message_type'] == 'chat_wallpaper') {
+        final sId = record['sender_id'];
+        final rId = record['receiver_id'];
+        if ((sId == myId && rId == otherUserId) || (sId == otherUserId && rId == myId)) {
+          fetchLatestWallpaper();
+        }
+      }
+    },
+  ).subscribe();
+
+  ref.onDispose(() {
+    channel.unsubscribe();
+    controller.close();
+  });
+
+  return controller.stream;
+});
+
 class ChatPage extends ConsumerStatefulWidget {
   const ChatPage({super.key, required this.otherUserId});
 
@@ -1382,27 +1441,43 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       }
     });
 
-    // Check for shared chat theme/wallpaper set by either friend in this conversation
-    String? sharedWallpaper;
-    bool hasExplicitReset = false;
-    final allChatMessages = [..._optimisticMessages, ...(messagesAsync.value ?? <Message>[])];
-    for (final m in allChatMessages) {
+    // Dedicated conversation wallpaper provider for persistent realtime sync across all devices
+    final sharedWpAsync = ref.watch(conversationWallpaperProvider(widget.otherUserId));
+
+    // Cache to local theme settings whenever remote updates arrive
+    ref.listen(conversationWallpaperProvider(widget.otherUserId), (prev, next) {
+      final wp = next.value;
+      if (wp != null) {
+        ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(widget.otherUserId, wp);
+      } else if (next.hasValue && wp == null) {
+        ref.read(themeServiceProvider.notifier).removeChatWallpaper(widget.otherUserId);
+      }
+    });
+
+    // Check for any optimistic wallpaper updates
+    String? optimisticWallpaper;
+    bool hasOptimisticReset = false;
+    for (final m in _optimisticMessages) {
       if (m.messageType == 'chat_wallpaper' && m.mediaUrl != null && m.mediaUrl!.isNotEmpty) {
         if (m.mediaUrl == 'reset') {
-          sharedWallpaper = null;
-          hasExplicitReset = true;
+          hasOptimisticReset = true;
+          optimisticWallpaper = null;
         } else {
-          sharedWallpaper = m.mediaUrl;
+          optimisticWallpaper = m.mediaUrl;
         }
         break;
       }
     }
 
-    final rawWallpaperPath = hasExplicitReset
+    final rawWallpaperPath = hasOptimisticReset
         ? null
-        : (sharedWallpaper ??
+        : (optimisticWallpaper ??
+            (sharedWpAsync.hasValue
+                ? sharedWpAsync.value
+                : themeSettings.chatWallpapers[widget.otherUserId]) ??
             themeSettings.chatWallpapers[widget.otherUserId] ??
             themeSettings.globalWallpaperPath);
+    final sharedWallpaper = rawWallpaperPath;
 
     // Resolve orientation-specific wallpaper (Portrait vs Landscape)
     final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
@@ -2921,7 +2996,8 @@ class _MessageBubble extends ConsumerWidget {
       }
     }
 
-    final activePreset = ref.watch(themeServiceProvider).getChatWallpaperPreset(chatPartnerId);
+    final activePreset = ref.watch(conversationWallpaperProvider(chatPartnerId)).value ??
+        ref.watch(themeServiceProvider).getChatWallpaperPreset(chatPartnerId);
     final sentBubbleColor = AppTheme.resolveThreadPrimaryColor(threadPreset: activePreset, themeData: Theme.of(context));
     final receivedBubbleColor = isLight ? const Color(0xFFEFEFEF) : const Color(0xFF262626);
 

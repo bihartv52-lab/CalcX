@@ -257,6 +257,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  Future<void> _launchWebsite() async {
+    final url = Uri.parse('https://calcx-web.vercel.app/landing');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open website')),
+        );
+      }
+    }
+  }
+
   @override
   void dispose() {
     _newPasscode.dispose();
@@ -758,6 +771,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xff10b981), // Premium green accent
                   foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _launchWebsite,
+                icon: const Icon(Icons.language_rounded),
+                label: const Text('Visit Official Website'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF00DBE9),
+                  side: const BorderSide(color: Color(0xFF00DBE9)),
                 ),
               ),
             ],
