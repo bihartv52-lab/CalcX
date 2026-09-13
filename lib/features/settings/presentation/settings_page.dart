@@ -245,7 +245,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _launchApkDownload() async {
-    final url = Uri.parse('https://bihartv52-2243s-projects.vercel.app/');
+    final url = Uri.parse('https://calcx.vercel.app');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
@@ -747,14 +747,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Ensure your app has the latest privacy features, encrypted chats, and game wagers.',
+                'Ensure your app has the latest privacy features, encrypted chats, and watch party sync.',
                 style: TextStyle(color: Colors.grey, fontSize: 13),
               ),
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: _launchApkDownload,
                 icon: const Icon(Icons.download_rounded),
-                label: const Text('Download Latest APK'),
+                label: const Text('Download Latest APK (111 MB)'),
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xff10b981), // Premium green accent
                   foregroundColor: Colors.white,

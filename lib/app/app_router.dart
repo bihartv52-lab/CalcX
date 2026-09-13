@@ -9,8 +9,6 @@ import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:calcx/features/rooms/presentation/room_watch_party_page.dart';
 import 'package:calcx/features/rooms/presentation/room_chat_page.dart';
 import 'package:calcx/features/rooms/presentation/room_voice_call_page.dart';
-import 'package:calcx/features/landing/presentation/landing_page.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -36,13 +34,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
   return GoRouter(
     navigatorKey: rootKey,
-    initialLocation: kIsWeb ? AppRoutes.landing : AppRoutes.calculator,
+    initialLocation: AppRoutes.calculator,
     redirect: (context, state) {
       final isUnlocked = ref.watch(calculatorUnlockedProvider);
       final loc = state.matchedLocation;
 
-      // Always permit landing, calculator and auth screens
-      if (loc == AppRoutes.landing || loc == AppRoutes.calculator || loc == AppRoutes.auth || loc == '/') {
+      // Always permit calculator and auth screens
+      if (loc == AppRoutes.calculator || loc == AppRoutes.auth || loc == '/') {
         return null;
       }
 
@@ -56,12 +54,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        redirect: (context, state) => kIsWeb ? AppRoutes.landing : AppRoutes.calculator,
-      ),
-      GoRoute(
-        path: AppRoutes.landing,
-        name: 'landing',
-        builder: (context, state) => const LandingPage(),
+        redirect: (_, __) => AppRoutes.calculator,
       ),
       GoRoute(
         path: AppRoutes.calculator,
