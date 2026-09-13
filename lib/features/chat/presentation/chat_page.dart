@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show File;
 import 'dart:math';
 import 'dart:ui';
 import 'package:calcx/core/models/message.dart';
@@ -16,6 +18,7 @@ import 'package:calcx/core/services/theme_service.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/features/chat/presentation/chat_list_page.dart';
 import 'package:calcx/features/chat/presentation/widgets/forward_recipient_picker_dialog.dart';
+import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 import 'package:calcx/features/chat/presentation/widgets/interactive_message_text.dart';
 import 'package:calcx/features/chat/presentation/widgets/message_hover_copy_button.dart';
@@ -216,11 +219,23 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(activeChatUserIdProvider.notifier).setActive(widget.otherUserId);
       ref.read(chatRepositoryProvider).markAllAsRead(widget.otherUserId);
       ref.invalidate(recentChatsProvider);
       if (mounted) {
         _messageFocusNode.requestFocus();
       }
+      // Re-assert focus after navigation and route transition animation settles
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted && !_messageFocusNode.hasFocus) {
+          _messageFocusNode.requestFocus();
+        }
+      });
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted && !_messageFocusNode.hasFocus) {
+          _messageFocusNode.requestFocus();
+        }
+      });
     });
 
     _autoRetryTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
@@ -248,6 +263,10 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       _lastSentTypingState = false;
       _sendTypingBroadcast(false);
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(activeChatUserIdProvider.notifier).setActive(null);
+    });
     
     _messageController.dispose();
     _messageFocusNode.dispose();
@@ -403,6 +422,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   Future<void> _stopAndSendRecording() async {
     _recordTimer?.cancel();
     _recordTimer = null;
+    final durationSec = _recordDuration;
+    final formattedDuration = _formatRecordDuration(durationSec);
     try {
       final path = await _audioRecorder.stop();
       setState(() {
@@ -412,7 +433,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
       if (path != null) {
         final xfile = XFile(path);
-        await _uploadAndSendMedia(xfile, 'audio', messageType: 'voice');
+        await _uploadAndSendMedia(xfile, 'audio', messageType: 'voice', content: formattedDuration);
       }
     } catch (e) {
       debugPrint('Error stopping recording: $e');
@@ -637,7 +658,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     });
     _scrollToBottom();
 
-    await _sendOptimistic(optimisticMsg);
+    // Fire in background asynchronously without blocking UI
+    unawaited(_sendOptimistic(optimisticMsg));
   }
 
   void _showMessageMenu(Message message) {
@@ -815,6 +837,511 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     );
   }
 
+  Future<void> _startCall(String callType) async {
+    final otherUserAsync = ref.read(otherUserProfileProvider(widget.otherUserId));
+    final otherUser = otherUserAsync.value ?? _otherUser;
+    if (otherUser == null) return;
+
+    final activeSession = ref.read(activeCallSessionProvider);
+    if (activeSession != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('You are already in an active call.')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final newCall = await ref.read(callRepositoryProvider).initiateCall(
+        receiverId: otherUser.id,
+        callType: callType,
+      );
+      if (mounted) {
+        ref.read(isCallScreenShowingProvider.notifier).state = true;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ActiveCallPage(call: newCall),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start the ${callType == 'video' ? 'video ' : ''}call. Please try again.')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteSingleStorageFile(SupabaseClient client, String fileUrl) async {
+    try {
+      final uri = Uri.parse(fileUrl);
+      final segments = uri.pathSegments;
+      final mediaIdx = segments.indexOf('media');
+      if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
+        final oldPath = segments.sublist(mediaIdx + 1).join('/');
+        await client.storage.from('media').remove([oldPath]);
+      }
+    } catch (e) {
+      debugPrint('Failed to delete storage file $fileUrl: $e');
+    }
+  }
+
+  Future<void> _deleteStorageFileIfExists(SupabaseClient client, String? url) async {
+    if (url == null || url.isEmpty) return;
+    try {
+      if (url.startsWith('{') && url.endsWith('}')) {
+        final decoded = jsonDecode(url) as Map<String, dynamic>;
+        for (final val in decoded.values) {
+          if (val is String && val.contains('/media/')) {
+            await _deleteSingleStorageFile(client, val);
+          }
+        }
+      } else if (url.contains('/media/')) {
+        await _deleteSingleStorageFile(client, url);
+      }
+    } catch (e) {
+      debugPrint('Error deleting old wallpaper file: $e');
+    }
+  }
+
+  Future<void> _uploadAndApplyDualWallpaper({
+    required XFile? portraitImage,
+    required XFile? landscapeImage,
+    required String? previousWallpaperUrl,
+  }) async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null) return;
+    final myId = client.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      String? portraitUrl;
+      String? landscapeUrl;
+      final ts = DateTime.now().millisecondsSinceEpoch;
+
+      if (portraitImage != null) {
+        final bytes = await portraitImage.readAsBytes();
+        final path = '$myId/chat_wallpapers/wp_${widget.otherUserId}_p_$ts.png';
+        await client.storage.from('media').uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(contentType: 'image/png', upsert: false),
+        );
+        portraitUrl = client.storage.from('media').getPublicUrl(path);
+      }
+
+      if (landscapeImage != null) {
+        final bytes = await landscapeImage.readAsBytes();
+        final path = '$myId/chat_wallpapers/wp_${widget.otherUserId}_l_$ts.png';
+        await client.storage.from('media').uploadBinary(
+          path,
+          bytes,
+          fileOptions: const FileOptions(contentType: 'image/png', upsert: false),
+        );
+        landscapeUrl = client.storage.from('media').getPublicUrl(path);
+      }
+
+      // Delete previous custom wallpaper files from storage
+      await _deleteStorageFileIfExists(client, previousWallpaperUrl);
+
+      // Clean up older chat_wallpaper messages in database
+      try {
+        await client.from('messages').delete()
+            .eq('message_type', 'chat_wallpaper')
+            .or('and(sender_id.eq.$myId,receiver_id.eq.${widget.otherUserId}),and(sender_id.eq.${widget.otherUserId},receiver_id.eq.$myId)');
+      } catch (_) {}
+
+      final String mediaPayload;
+      if (portraitUrl != null && landscapeUrl != null) {
+        mediaPayload = jsonEncode({'portrait': portraitUrl, 'landscape': landscapeUrl});
+      } else if (portraitUrl != null) {
+        mediaPayload = jsonEncode({'portrait': portraitUrl});
+      } else {
+        mediaPayload = jsonEncode({'landscape': landscapeUrl!});
+      }
+
+      await ref.read(chatRepositoryProvider).sendMessage(
+        receiverId: widget.otherUserId,
+        content: 'updated the chat theme',
+        messageType: 'chat_wallpaper',
+        mediaUrl: mediaPayload,
+      );
+
+      await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
+        widget.otherUserId,
+        mediaPayload,
+      );
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Chat wallpaper updated for both friends!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update wallpaper: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showDualWallpaperDialog() async {
+    final client = SupabaseService.clientOrNull;
+    if (client == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Supabase is not configured.')),
+      );
+      return;
+    }
+
+    final myId = client.auth.currentUser?.id;
+    if (myId == null) return;
+
+    final themeSettings = ref.read(themeServiceProvider);
+    final previousWallpaperUrl = themeSettings.chatWallpapers[widget.otherUserId];
+
+    final picker = ImagePicker();
+    XFile? portraitImage;
+    XFile? landscapeImage;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF161616),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final hasSelectedAny = portraitImage != null || landscapeImage != null;
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Row(
+                      children: const [
+                        Icon(Icons.wallpaper_rounded, color: Colors.blueAccent, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Custom Chat Wallpaper',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 17,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Choose tailored photos for vertical (portrait) and horizontal (landscape) screens.',
+                      style: TextStyle(color: Colors.white60, fontSize: 13),
+                    ),
+                    const SizedBox(height: 18),
+
+                    // Pickers Row with Distinct Aspect Ratio Frames
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Portrait Phone Frame (9:16)
+                        Expanded(
+                          flex: 5,
+                          child: Column(
+                            children: [
+                              GestureDetector(
+                                onTap: () async {
+                                  final picked = await picker.pickImage(source: ImageSource.gallery);
+                                  if (picked != null) {
+                                    setSheetState(() {
+                                      portraitImage = picked;
+                                    });
+                                  }
+                                },
+                                child: AspectRatio(
+                                  aspectRatio: 9 / 16,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.05),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: portraitImage != null ? Colors.blueAccent : Colors.white24,
+                                        width: portraitImage != null ? 2.5 : 1.5,
+                                      ),
+                                      boxShadow: portraitImage != null
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.blueAccent.withValues(alpha: 0.25),
+                                                blurRadius: 10,
+                                                spreadRadius: 1,
+                                              )
+                                            ]
+                                          : null,
+                                    ),
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        if (portraitImage != null)
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(18),
+                                            child: kIsWeb
+                                                ? Image.network(portraitImage!.path, fit: BoxFit.cover, width: double.infinity, height: double.infinity)
+                                                : Image.file(File(portraitImage!.path), fit: BoxFit.cover, width: double.infinity, height: double.infinity),
+                                          )
+                                        else
+                                          Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: const [
+                                              Icon(Icons.phone_android_rounded, color: Colors.blueAccent, size: 34),
+                                              SizedBox(height: 6),
+                                              Text(
+                                                'Portrait Phone',
+                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                              ),
+                                              SizedBox(height: 2),
+                                              Text(
+                                                '9:16 Aspect',
+                                                style: TextStyle(color: Colors.white54, fontSize: 10),
+                                              ),
+                                              SizedBox(height: 6),
+                                              Text(
+                                                'Tap to choose',
+                                                style: TextStyle(color: Colors.blueAccent, fontSize: 10, fontWeight: FontWeight.w600),
+                                              ),
+                                            ],
+                                          ),
+                                        // Phone top speaker/notch bar
+                                        Positioned(
+                                          top: 6,
+                                          child: Container(
+                                            width: 28,
+                                            height: 4,
+                                            decoration: BoxDecoration(
+                                              color: Colors.white24,
+                                              borderRadius: BorderRadius.circular(2),
+                                            ),
+                                          ),
+                                        ),
+                                        if (portraitImage != null)
+                                          Positioned(
+                                            top: 6,
+                                            right: 6,
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                setSheetState(() => portraitImage = null);
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.black87,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '📱 Vertical (9:16)',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Primary phone frame',
+                                style: TextStyle(color: Colors.white38, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+
+                        // Landscape Widescreen Frame (16:9)
+                        Expanded(
+                          flex: 6,
+                          child: Column(
+                            children: [
+                              GestureDetector(
+                                onTap: () async {
+                                  final picked = await picker.pickImage(source: ImageSource.gallery);
+                                  if (picked != null) {
+                                    setSheetState(() {
+                                      landscapeImage = picked;
+                                    });
+                                  }
+                                },
+                                child: AspectRatio(
+                                  aspectRatio: 16 / 9,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.05),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: landscapeImage != null ? Colors.purpleAccent : Colors.white24,
+                                        width: landscapeImage != null ? 2.5 : 1.5,
+                                      ),
+                                      boxShadow: landscapeImage != null
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.purpleAccent.withValues(alpha: 0.25),
+                                                blurRadius: 10,
+                                                spreadRadius: 1,
+                                              )
+                                            ]
+                                          : null,
+                                    ),
+                                    child: Stack(
+                                      alignment: Alignment.center,
+                                      children: [
+                                        if (landscapeImage != null)
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(10),
+                                            child: kIsWeb
+                                                ? Image.network(landscapeImage!.path, fit: BoxFit.cover, width: double.infinity, height: double.infinity)
+                                                : Image.file(File(landscapeImage!.path), fit: BoxFit.cover, width: double.infinity, height: double.infinity),
+                                          )
+                                        else
+                                          Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: const [
+                                              Icon(Icons.crop_16_9_rounded, color: Colors.purpleAccent, size: 28),
+                                              SizedBox(height: 4),
+                                              Text(
+                                                'Horizontal Screen',
+                                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                              ),
+                                              SizedBox(height: 2),
+                                              Text(
+                                                '16:9 Widescreen (Optional)',
+                                                style: TextStyle(color: Colors.purpleAccent, fontSize: 9, fontWeight: FontWeight.w600),
+                                              ),
+                                            ],
+                                          ),
+                                        if (landscapeImage != null)
+                                          Positioned(
+                                            top: 6,
+                                            right: 6,
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                setSheetState(() => landscapeImage = null);
+                                              },
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: const BoxDecoration(
+                                                  color: Colors.black87,
+                                                  shape: BoxShape.circle,
+                                                ),
+                                                child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                '💻 Horizontal (16:9)',
+                                style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 11),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'For rotated & desktop view',
+                                style: TextStyle(color: Colors.white38, fontSize: 10),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: const [
+                        Icon(Icons.info_outline_rounded, color: Colors.white38, size: 14),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'If only one photo is chosen, it will adapt to both vertical and horizontal screens automatically.',
+                            style: TextStyle(color: Colors.white38, fontSize: 11),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Apply Button
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.white70,
+                              side: const BorderSide(color: Colors.white24),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.blueAccent,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            icon: const Icon(Icons.check_rounded, size: 18),
+                            label: const Text('Apply Wallpaper', style: TextStyle(fontWeight: FontWeight.bold)),
+                            onPressed: !hasSelectedAny
+                                ? null
+                                : () async {
+                                    Navigator.pop(ctx);
+                                    await _uploadAndApplyDualWallpaper(
+                                      portraitImage: portraitImage,
+                                      landscapeImage: landscapeImage,
+                                      previousWallpaperUrl: previousWallpaperUrl,
+                                    );
+                                  },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(chatMessagesProvider(widget.otherUserId));
@@ -857,11 +1384,13 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
     // Check for shared chat theme/wallpaper set by either friend in this conversation
     String? sharedWallpaper;
-    final allChatMessages = [..._optimisticMessages, ...?(messagesAsync.value ?? <Message>[])];
+    bool hasExplicitReset = false;
+    final allChatMessages = [..._optimisticMessages, ...(messagesAsync.value ?? <Message>[])];
     for (final m in allChatMessages) {
       if (m.messageType == 'chat_wallpaper' && m.mediaUrl != null && m.mediaUrl!.isNotEmpty) {
         if (m.mediaUrl == 'reset') {
           sharedWallpaper = null;
+          hasExplicitReset = true;
         } else {
           sharedWallpaper = m.mediaUrl;
         }
@@ -869,9 +1398,29 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       }
     }
 
-    final wallpaperPath = sharedWallpaper ??
-        themeSettings.chatWallpapers[widget.otherUserId] ??
-        themeSettings.globalWallpaperPath;
+    final rawWallpaperPath = hasExplicitReset
+        ? null
+        : (sharedWallpaper ??
+            themeSettings.chatWallpapers[widget.otherUserId] ??
+            themeSettings.globalWallpaperPath);
+
+    // Resolve orientation-specific wallpaper (Portrait vs Landscape)
+    final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+    String? wallpaperPath = rawWallpaperPath;
+    if (rawWallpaperPath != null && rawWallpaperPath.startsWith('{') && rawWallpaperPath.endsWith('}')) {
+      try {
+        final decoded = jsonDecode(rawWallpaperPath) as Map<String, dynamic>;
+        final portrait = decoded['portrait'] as String?;
+        final landscape = decoded['landscape'] as String?;
+        if (isLandscape && landscape != null && landscape.isNotEmpty) {
+          wallpaperPath = landscape;
+        } else {
+          wallpaperPath = portrait ?? landscape ?? rawWallpaperPath;
+        }
+      } catch (_) {
+        wallpaperPath = rawWallpaperPath;
+      }
+    }
 
     return Scaffold(
       backgroundColor: isLight ? Colors.white : Colors.black,
@@ -1050,150 +1599,23 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                   ),
                   IconButton(
                     icon: const Icon(Icons.phone_outlined, size: 22),
-                    onPressed: () async {
-                      if (otherUser == null) return;
-                      try {
-                        final newCall = await ref.read(callRepositoryProvider).initiateCall(
-                          receiverId: otherUser.id,
-                          callType: 'audio',
-                        );
-                        if (context.mounted) {
-                          ref.read(isCallScreenShowingProvider.notifier).state = true;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ActiveCallPage(call: newCall),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Could not start the call. Please try again.')),
-                          );
-                        }
-                      }
-                    },
+                    onPressed: () => _startCall('audio'),
                   ),
                   IconButton(
                     icon: const Icon(Icons.videocam_outlined, size: 24),
-                    onPressed: () async {
-                      if (otherUser == null) return;
-                      try {
-                        final newCall = await ref.read(callRepositoryProvider).initiateCall(
-                          receiverId: otherUser.id,
-                          callType: 'video',
-                        );
-                        if (context.mounted) {
-                          ref.read(isCallScreenShowingProvider.notifier).state = true;
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ActiveCallPage(call: newCall),
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Could not start the video call. Please try again.')),
-                          );
-                        }
-                      }
-                    },
+                    onPressed: () => _startCall('video'),
                   ),
                   PopupMenuButton<String>(
                     icon: const Icon(Icons.info_outline_rounded, size: 22),
                     onSelected: (val) async {
                       if (val == 'wallpaper') {
-                        try {
-                          final picker = ImagePicker();
-                          final picked = await picker.pickImage(source: ImageSource.gallery);
-                          if (picked == null) return;
-                          
-                          final previousWallpaperUrl = sharedWallpaper ??
-                              themeSettings.chatWallpapers[widget.otherUserId];
-
-                          // 1. Upload to Supabase Storage media bucket
-                          final bytes = await picked.readAsBytes();
-                          final client = SupabaseService.clientOrNull;
-                          if (client == null) throw 'Supabase not initialized';
-                          final myId = client.auth.currentUser?.id;
-                          final fileName = myId != null
-                              ? '$myId/chat_wallpapers/wp_${widget.otherUserId}_${DateTime.now().millisecondsSinceEpoch}.png'
-                              : 'chat_wallpapers/wp_${widget.otherUserId}_${DateTime.now().millisecondsSinceEpoch}.png';
-                          await client.storage.from('media').uploadBinary(
-                            fileName,
-                            bytes,
-                            fileOptions: const FileOptions(contentType: 'image/png', upsert: false),
-                          );
-                          final publicUrl = client.storage.from('media').getPublicUrl(fileName);
-
-                          // 2. Auto-delete previous custom wallpaper from Supabase storage
-                          if (previousWallpaperUrl != null && previousWallpaperUrl.contains('/media/')) {
-                            try {
-                              final uri = Uri.parse(previousWallpaperUrl);
-                              final segments = uri.pathSegments;
-                              final mediaIdx = segments.indexOf('media');
-                              if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
-                                final oldPath = segments.sublist(mediaIdx + 1).join('/');
-                                await client.storage.from('media').remove([oldPath]);
-                              }
-                            } catch (delErr) {
-                              debugPrint('Failed to delete old wallpaper file: $delErr');
-                            }
-                          }
-
-                          // 3. Clean up older chat_wallpaper messages in database
-                          try {
-                            if (myId != null) {
-                              await client.from('messages').delete()
-                                  .eq('message_type', 'chat_wallpaper')
-                                  .or('and(sender_id.eq.$myId,receiver_id.eq.${widget.otherUserId}),and(sender_id.eq.${widget.otherUserId},receiver_id.eq.$myId)');
-                            }
-                          } catch (_) {}
-
-                          // 4. Broadcast and save message so friend also receives it
-                          await ref.read(chatRepositoryProvider).sendMessage(
-                            receiverId: widget.otherUserId,
-                            content: 'updated the chat theme',
-                            messageType: 'chat_wallpaper',
-                            mediaUrl: publicUrl,
-                          );
-
-                          // 5. Update local theme service
-                          await ref.read(themeServiceProvider.notifier).setChatWallpaperPreset(
-                            widget.otherUserId,
-                            publicUrl,
-                          );
-
-                          if (mounted) {
-                            setState(() {});
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('✅ Chat wallpaper updated for both friends!')),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Could not update wallpaper: $e')),
-                            );
-                          }
-                        }
+                        await _showDualWallpaperDialog();
                       } else if (val.startsWith('preset_')) {
                         final previousWallpaperUrl = sharedWallpaper ??
                             themeSettings.chatWallpapers[widget.otherUserId];
                         final client = SupabaseService.clientOrNull;
-                        if (previousWallpaperUrl != null && previousWallpaperUrl.contains('/media/')) {
-                          try {
-                            final uri = Uri.parse(previousWallpaperUrl);
-                            final segments = uri.pathSegments;
-                            final mediaIdx = segments.indexOf('media');
-                            if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
-                              final oldPath = segments.sublist(mediaIdx + 1).join('/');
-                              await client?.storage.from('media').remove([oldPath]);
-                            }
-                          } catch (_) {}
+                        if (client != null) {
+                          await _deleteStorageFileIfExists(client, previousWallpaperUrl);
                         }
 
                         final myId = client?.auth.currentUser?.id;
@@ -1215,7 +1637,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                               widget.otherUserId,
                               val,
                             );
-                        if (mounted) {
+                        if (mounted && context.mounted) {
                           setState(() {});
                           final themeTitle = val == 'preset_emerald'
                               ? 'Emerald'
@@ -1234,16 +1656,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                         final previousWallpaperUrl = sharedWallpaper ??
                             themeSettings.chatWallpapers[widget.otherUserId];
                         final client = SupabaseService.clientOrNull;
-                        if (previousWallpaperUrl != null && previousWallpaperUrl.contains('/media/')) {
-                          try {
-                            final uri = Uri.parse(previousWallpaperUrl);
-                            final segments = uri.pathSegments;
-                            final mediaIdx = segments.indexOf('media');
-                            if (mediaIdx != -1 && mediaIdx < segments.length - 1) {
-                              final oldPath = segments.sublist(mediaIdx + 1).join('/');
-                              await client?.storage.from('media').remove([oldPath]);
-                            }
-                          } catch (_) {}
+                        if (client != null) {
+                          await _deleteStorageFileIfExists(client, previousWallpaperUrl);
                         }
 
                         final myId = client?.auth.currentUser?.id;
@@ -1262,7 +1676,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           mediaUrl: 'reset',
                         );
                         await ref.read(themeServiceProvider.notifier).removeChatWallpaper(widget.otherUserId);
-                        if (mounted) {
+                        if (mounted && context.mounted) {
                           setState(() {});
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('✅ Chat theme reset to default for both!')),
@@ -1362,6 +1776,82 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
           
           Column(
             children: [
+              // Ongoing Call Banner if call is active with this user and call page is minimized
+              Builder(
+                builder: (context) {
+                  final session = ref.watch(activeCallSessionProvider);
+                  final isCallScreenShowing = ref.watch(isCallScreenShowingProvider);
+                  if (session != null && !isCallScreenShowing) {
+                    final call = session.call;
+                    final isCallWithThisUser = call.callerId == widget.otherUserId || call.receiverId == widget.otherUserId;
+                    if (isCallWithThisUser) {
+                      return GestureDetector(
+                        onTap: () {
+                          ref.read(isCallScreenShowingProvider.notifier).state = true;
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => ActiveCallPage(call: call),
+                            ),
+                          );
+                        },
+                        child: Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF10B981), Color(0xFF059669)],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white24,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  call.callType == 'video' ? Icons.videocam_rounded : Icons.phone_in_talk_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Call in progress with ${otherUser?.displayName ?? 'Friend'}',
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                    ),
+                                    const Text(
+                                      'Tap here to return to call',
+                                      style: TextStyle(color: Colors.white70, fontSize: 11),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
+                            ],
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
               Expanded(
                 child: SelectionArea(
                   child: messagesAsync.when(
@@ -1446,6 +1936,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                 otherUserInitials: otherUser?.displayName.isNotEmpty == true
                                     ? otherUser!.displayName[0].toUpperCase()
                                     : '?',
+                                onCallBack: _startCall,
                               );
 
                               if (message.status == MessageStatus.failed) {
@@ -1804,7 +2295,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     }
   }
 
-  Future<void> _uploadAndSendMedia(XFile file, String fileType, {String? messageType}) async {
+  Future<void> _uploadAndSendMedia(XFile file, String fileType, {String? messageType, String? content}) async {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Uploading media...'), duration: Duration(seconds: 4)),
@@ -1820,6 +2311,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
         messageType: messageType ?? fileType,
         mediaUrl: result['url']!,
         mediaThumbnail: result['thumbnail'],
+        content: content,
       );
     } catch (e) {
       if (mounted) {
@@ -1869,6 +2361,18 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   }
 
   Decoration _getPresetDecoration(String path) {
+    if (path.startsWith('{') && path.endsWith('}')) {
+      try {
+        final decoded = jsonDecode(path) as Map<String, dynamic>;
+        final portrait = decoded['portrait'] as String?;
+        final landscape = decoded['landscape'] as String?;
+        final isLandscape = MediaQuery.of(context).orientation == Orientation.landscape;
+        final resolved = isLandscape ? (landscape ?? portrait) : (portrait ?? landscape);
+        if (resolved != null && resolved.isNotEmpty) {
+          return _getPresetDecoration(resolved);
+        }
+      } catch (_) {}
+    }
     if (path == 'preset_emerald') {
       return const BoxDecoration(
         gradient: LinearGradient(
@@ -2014,6 +2518,7 @@ class _MessageBubble extends ConsumerWidget {
     this.onLongPress,
     this.otherUserAvatarUrl,
     required this.otherUserInitials,
+    this.onCallBack,
     super.key,
   });
 
@@ -2030,6 +2535,7 @@ class _MessageBubble extends ConsumerWidget {
   final VoidCallback? onLongPress;
   final String? otherUserAvatarUrl;
   final String otherUserInitials;
+  final Function(String callType)? onCallBack;
 
   Widget _buildSongCard(BuildContext context, WidgetRef ref) {
     final parts = message.content.split('|');
@@ -2144,12 +2650,182 @@ class _MessageBubble extends ConsumerWidget {
     );
   }
 
+  Widget _buildCallCard(BuildContext context, WidgetRef ref) {
+    String callType = 'audio';
+    String status = 'ended';
+    int duration = 0;
+    String callerId = message.senderId;
+
+    if (message.mediaUrl != null && message.mediaUrl!.isNotEmpty) {
+      try {
+        final data = jsonDecode(message.mediaUrl!) as Map<String, dynamic>;
+        callType = data['call_type'] as String? ?? 'audio';
+        status = data['status'] as String? ?? 'ended';
+        duration = (data['duration'] as num?)?.toInt() ?? 0;
+        callerId = data['caller_id'] as String? ?? message.senderId;
+      } catch (_) {}
+    }
+
+    final isVideo = callType == 'video';
+    final isMissed = status == 'missed';
+    final isBusy = status == 'busy';
+    final isDeclined = status == 'rejected';
+
+    final String title;
+    final IconData iconData;
+    final Color iconColor;
+
+    if (isMissed) {
+      title = isVideo ? 'Missed video call' : 'Missed voice call';
+      iconData = isVideo ? Icons.videocam_off_rounded : Icons.phone_missed_rounded;
+      iconColor = Colors.redAccent;
+    } else if (isBusy) {
+      title = 'Line busy';
+      iconData = Icons.phone_disabled_rounded;
+      iconColor = Colors.orangeAccent;
+    } else if (isDeclined) {
+      title = 'Declined call';
+      iconData = Icons.phone_disabled_rounded;
+      iconColor = Colors.redAccent;
+    } else {
+      // Completed / ended
+      final myId = SupabaseService.clientOrNull?.auth.currentUser?.id;
+      final wasOutgoing = myId != null ? (callerId == myId) : isMe;
+      if (wasOutgoing) {
+        title = isVideo ? 'Outgoing video call' : 'Outgoing voice call';
+        iconData = isVideo ? Icons.videocam_rounded : Icons.phone_forwarded_rounded;
+        iconColor = Colors.greenAccent;
+      } else {
+        title = isVideo ? 'Incoming video call' : 'Incoming voice call';
+        iconData = isVideo ? Icons.videocam_rounded : Icons.phone_callback_rounded;
+        iconColor = Colors.greenAccent;
+      }
+    }
+
+    String subtitle = '';
+    if (duration > 0) {
+      final mins = duration ~/ 60;
+      final secs = duration % 60;
+      subtitle = mins > 0 ? '${mins}m ${secs}s' : '${secs}s';
+    } else if (isMissed) {
+      subtitle = 'Tap to call back';
+    } else if (isDeclined) {
+      subtitle = 'Declined';
+    } else if (isBusy) {
+      subtitle = 'Busy';
+    }
+
+    final timeStr = DateFormat('h:mm a').format(message.createdAt.toLocal());
+    final fullSubtitle = subtitle.isNotEmpty ? '$subtitle • $timeStr' : timeStr;
+
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final cardBg = isLight ? const Color(0xFFF1F3F5) : const Color(0xFF1E1E1E);
+    final cardBorder = isLight ? const Color(0xFFE2E8F0) : const Color(0xFF2E2E2E);
+    final textColor = isLight ? Colors.black87 : Colors.white;
+
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        constraints: const BoxConstraints(maxWidth: 320),
+        decoration: BoxDecoration(
+          color: cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cardBorder, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isLight ? 0.04 : 0.2),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: iconColor.withOpacity(0.15),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(iconData, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.5,
+                      color: textColor,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    fullSubtitle,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isMissed ? Colors.redAccent.withOpacity(0.9) : (isLight ? Colors.black54 : Colors.white60),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => onCallBack?.call(callType),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: isLight ? Colors.white : Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: isLight ? Colors.black12 : Colors.white24,
+                    width: 0.8,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isVideo ? Icons.videocam_rounded : Icons.phone_rounded,
+                      size: 14,
+                      color: isLight ? Colors.blueAccent : Colors.lightBlueAccent,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Call back',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: isLight ? Colors.blueAccent : Colors.lightBlueAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chatPartnerId = message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
     final isRead = (otherUserLastReadAt != null && message.createdAt.isBefore(otherUserLastReadAt!)) ||
         message.readUserIds.contains(chatPartnerId);
     final isLight = Theme.of(context).brightness == Brightness.light;
+
+    if (message.messageType == 'call') {
+      return _buildCallCard(context, ref);
+    }
 
     if (message.messageType == 'chat_wallpaper') {
       final isReset = message.mediaUrl == 'reset';
@@ -2343,7 +3019,7 @@ class _MessageBubble extends ConsumerWidget {
                 ),
               )
             else if ((message.messageType == 'voice' || message.messageType == 'audio') && message.mediaUrl != null)
-              AudioBubblePlayer(audioUrl: message.mediaUrl!)
+              AudioBubblePlayer(audioUrl: message.mediaUrl!, durationText: message.content)
             else if (message.messageType == 'video' && message.mediaUrl != null)
               _buildVideoBubble(context, message),
             
@@ -2352,7 +3028,7 @@ class _MessageBubble extends ConsumerWidget {
                 'Message was unsent',
                 style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey),
               )
-            else if (message.content.isNotEmpty)
+            else if (message.messageType != 'voice' && message.messageType != 'audio' && message.content.isNotEmpty)
               InteractiveMessageText(
                 text: message.content,
                 style: TextStyle(
@@ -2514,13 +3190,36 @@ class _MessageBubble extends ConsumerWidget {
                     ),
             ),
             Container(
-              width: 36,
-              height: 36,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
+                color: Colors.black.withOpacity(0.55),
                 shape: BoxShape.circle,
+                border: Border.all(color: Colors.white30, width: 1),
               ),
-              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 24),
+            ),
+            Positioned(
+              bottom: 6,
+              left: 6,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.65),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.videocam_rounded, color: Colors.white, size: 12),
+                    const SizedBox(width: 4),
+                    Text(
+                      msg.content.isNotEmpty ? msg.content : 'Video',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
@@ -2910,8 +3609,9 @@ class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
 
 class AudioBubblePlayer extends StatefulWidget {
   final String audioUrl;
+  final String? durationText;
 
-  const AudioBubblePlayer({required this.audioUrl, super.key});
+  const AudioBubblePlayer({required this.audioUrl, this.durationText, super.key});
 
   @override
   State<AudioBubblePlayer> createState() => _AudioBubblePlayerState();
@@ -2920,6 +3620,7 @@ class AudioBubblePlayer extends StatefulWidget {
 class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
   late final AudioPlayer _audioPlayer;
   bool _isPlaying = false;
+  bool _isLoading = false;
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   StreamSubscription? _playerStateSubscription;
@@ -2940,6 +3641,9 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
       if (mounted) {
         setState(() {
           _isPlaying = state == PlayerState.playing;
+          if (state == PlayerState.playing || state == PlayerState.paused || state == PlayerState.completed || state == PlayerState.stopped) {
+            _isLoading = false;
+          }
         });
       }
     });
@@ -2964,6 +3668,7 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
       if (mounted) {
         setState(() {
           _isPlaying = false;
+          _isLoading = false;
           _position = Duration.zero;
         });
       }
@@ -2980,15 +3685,29 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
     super.dispose();
   }
 
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _togglePlay() async {
     try {
       if (_isPlaying) {
         await _audioPlayer.pause();
       } else {
+        setState(() {
+          _isLoading = true;
+        });
         await _audioPlayer.play(UrlSource(widget.audioUrl));
       }
     } catch (e) {
       debugPrint('Error playing audio: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -2998,24 +3717,41 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
         ? _position.inMilliseconds / _duration.inMilliseconds
         : 0.0;
 
+    final formattedTotal = _duration.inSeconds > 0
+        ? _formatDuration(_duration)
+        : (widget.durationText != null && widget.durationText!.isNotEmpty
+            ? widget.durationText!
+            : '0:00');
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-      width: 220,
+      width: 240,
       child: Row(
         children: [
           GestureDetector(
-            onTap: _togglePlay,
+            onTap: _isLoading ? null : _togglePlay,
             child: Container(
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               decoration: const BoxDecoration(
                 color: Colors.white24,
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                color: Colors.white,
-                size: 20,
+              child: Center(
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Icon(
+                        _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
               ),
             ),
           ),
@@ -3040,6 +3776,22 @@ class _AudioBubblePlayerState extends State<AudioBubblePlayer> {
                       final targetMs = (val * _duration.inMilliseconds).toInt();
                       await _audioPlayer.seek(Duration(milliseconds: targetMs));
                     },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatDuration(_position),
+                        style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                      ),
+                      Text(
+                        formattedTotal,
+                        style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.w500),
+                      ),
+                    ],
                   ),
                 ),
               ],

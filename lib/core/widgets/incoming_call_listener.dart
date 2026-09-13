@@ -18,6 +18,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
 
+class ActiveChatUserIdNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void setActive(String? userId) {
+    state = userId;
+  }
+}
+
+final activeChatUserIdProvider = NotifierProvider<ActiveChatUserIdNotifier, String?>(
+  ActiveChatUserIdNotifier.new,
+);
+
 final notificationsStreamProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final client = SupabaseService.clientOrNull;
   if (client == null) return const Stream.empty();
@@ -107,15 +120,16 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
 
   bool get _isOnCalculatorOrAuth {
     try {
+      final isUnlocked = ref.read(calculatorUnlockedProvider);
+      if (!isUnlocked) return true; // Stealth calculator disguise is active
+
       final router = ref.read(appRouterProvider);
       final path = router.routerDelegate.currentConfiguration.uri.path;
       return path == AppRoutes.calculator ||
           path == AppRoutes.auth ||
-          path == '/' ||
-          path.isEmpty ||
           path.startsWith('/calculator');
     } catch (_) {
-      return true; // Stealth fail-safe
+      return false;
     }
   }
 
@@ -145,8 +159,19 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
     final data = notification['data'] as Map<String, dynamic>?;
     final senderName = data?['sender_name'] as String?;
     final content = data?['content'] as String?;
-    final title = senderName ?? (notification['title'] as String? ?? 'Notification');
-    final body = content ?? (notification['body'] as String? ?? '');
+    final rawTitle = notification['title'] as String? ?? 'Notification';
+    final rawBody = notification['body'] as String? ?? '';
+
+    final bool isCalculationDisguise = rawBody.toLowerCase().contains('calculation is pending') || 
+                                       rawBody.toLowerCase().contains('pending calculation');
+
+    final title = (senderName != null && senderName.isNotEmpty)
+        ? senderName
+        : (rawTitle == 'CalcX' ? 'New Message' : rawTitle);
+
+    final body = (content != null && content.isNotEmpty)
+        ? content
+        : (isCalculationDisguise ? 'Sent you a new message' : rawBody);
 
     IconData icon;
     Color iconColor;
@@ -254,9 +279,20 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
     // 1. Check for incoming calls
     final calls = ref.watch(incomingCallsProvider).value ?? [];
     final isOnCalculatorOrAuth = _isOnCalculatorOrAuth;
+    final session = ref.watch(activeCallSessionProvider);
+    final isCallSessionActive = session != null;
 
-    if (isOnCalculatorOrAuth) {
-      // Stealth Guarantee: immediately banish any incoming call UI if user is on Calculator or Auth
+    if (isOnCalculatorOrAuth || isCallSessionActive) {
+      if (isCallSessionActive && calls.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          for (final incoming in calls) {
+            if (incoming.id != session.call.id) {
+              ref.read(callRepositoryProvider).rejectCallWithBusy(incoming.id);
+            }
+          }
+        });
+      }
+      // Immediately dismiss any incoming call UI if on calculator/auth or already in call
       if (_isPageShowing && _activeRoute != null) {
         final rootKey = ref.read(rootNavigatorKeyProvider);
         final rootContext = rootKey.currentContext;
@@ -446,6 +482,11 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
       if (type == 'message') {
         final data = latest['data'] as Map<String, dynamic>?;
         final senderId = data?['sender_id'] as String?;
+        final activeChatUserId = ref.read(activeChatUserIdProvider);
+        if (senderId != null && activeChatUserId == senderId) {
+          // Already in chat with this user, completely suppress in-app banner
+          return;
+        }
         final router = ref.read(appRouterProvider);
         final location = router.routerDelegate.currentConfiguration.uri.toString();
         if (senderId != null && location.contains('/chat/$senderId')) {
@@ -481,8 +522,6 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
       }
     });
 
-    final session = ref.watch(activeCallSessionProvider);
-    final isCallSessionActive = session != null;
     final isCallScreenShowing = ref.watch(isCallScreenShowingProvider);
 
     // Only show ongoing call indicator banner if call is active but call page is minimized,

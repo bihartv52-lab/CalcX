@@ -1,6 +1,7 @@
 import 'package:calcx/core/models/call.dart';
 import 'package:calcx/features/calls/data/call_repository.dart';
-import 'package:calcx/features/calls/presentation/incoming_call_page.dart';
+import 'package:calcx/features/calls/data/call_session_provider.dart';
+import 'package:calcx/features/calls/presentation/active_call_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +21,35 @@ class CallHistoryPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Call History'),
+        actions: [
+          IconButton(
+            tooltip: 'Clear All History',
+            icon: const Icon(Icons.delete_sweep_rounded),
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Clear All Call History'),
+                  content: const Text('Are you sure you want to delete all call history logs? This cannot be undone.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Clear All', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await ref.read(callRepositoryProvider).clearAllCallHistory();
+                ref.invalidate(callHistoryProvider);
+              }
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
@@ -99,6 +129,9 @@ class _CallHistoryTile extends ConsumerWidget {
     } else if (call.isRejected) {
       statusIcon = Icons.call_end;
       statusColor = Colors.orange;
+    } else if (call.isBusy) {
+      statusIcon = Icons.phone_paused;
+      statusColor = Colors.amber;
     } else if (call.isEnded) {
       statusIcon = isOutgoing ? Icons.call_made : Icons.call_received;
       statusColor = Colors.green;
@@ -198,7 +231,13 @@ class _CallHistoryTile extends ConsumerWidget {
                 color: Theme.of(context).primaryColor,
               ),
               onPressed: () async {
-                // Initiate new call
+                final activeSession = ref.read(activeCallSessionProvider);
+                if (activeSession != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('You are already in an active call.')),
+                  );
+                  return;
+                }
                 try {
                   final newCall = await repository.initiateCall(
                     receiverId: isOutgoing ? call.receiverId : call.callerId,
@@ -206,10 +245,11 @@ class _CallHistoryTile extends ConsumerWidget {
                   );
 
                   if (context.mounted) {
+                    ref.read(isCallScreenShowingProvider.notifier).state = true;
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => IncomingCallPage(call: newCall),
+                        builder: (context) => ActiveCallPage(call: newCall),
                       ),
                     );
                   }
@@ -233,6 +273,8 @@ class _CallHistoryTile extends ConsumerWidget {
       return isOutgoing ? 'No answer' : 'Missed';
     } else if (call.isRejected) {
       return 'Declined';
+    } else if (call.isBusy) {
+      return 'Busy';
     } else if (call.isEnded) {
       return isOutgoing ? 'Outgoing' : 'Incoming';
     } else {

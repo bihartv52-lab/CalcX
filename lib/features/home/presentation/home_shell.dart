@@ -272,6 +272,15 @@ class _TopBar extends ConsumerWidget {
                   subtitle: Text('@${friend.username}'),
                   onTap: () async {
                     Navigator.pop(context); // Close dialog
+                    final activeSession = ref.read(activeCallSessionProvider);
+                    if (activeSession != null) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('You are already in an active call.')),
+                        );
+                      }
+                      return;
+                    }
                     try {
                       final newCall = await ref.read(callRepositoryProvider).initiateCall(
                         receiverId: friend.id,

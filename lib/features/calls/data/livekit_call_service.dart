@@ -2,6 +2,7 @@ import 'package:calcx/app/app_env.dart';
 import 'package:calcx/features/calls/domain/call_participant.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -185,16 +186,55 @@ class LiveKitCallService {
       }
       participant ??= room.remoteParticipants[participantId];
 
+      // Fallback 1: Direct 1-on-1 call with exactly 1 remote participant
+      if (participant == null && room.remoteParticipants.length == 1) {
+        participant = room.remoteParticipants.values.first;
+      }
+
+      // Fallback 2: Substring or containment match
+      if (participant == null && room.remoteParticipants.isNotEmpty) {
+        for (final p in room.remoteParticipants.values) {
+          if (p.identity.contains(participantId) || participantId.contains(p.identity)) {
+            participant = p;
+            break;
+          }
+        }
+      }
+
+      // If resolved participant, adjust their audio tracks
       if (participant != null) {
         for (final pub in participant.audioTrackPublications) {
           final track = pub.track;
           if (track != null) {
-            try {
-              (track as dynamic).setVolume?.call(clamped);
-            } catch (_) {}
+            if (!kIsWeb) {
+              try {
+                await rtc.Helper.setVolume(clamped, track.mediaStreamTrack);
+              } catch (volErr) {
+                debugPrint('rtc.Helper.setVolume error: $volErr');
+              }
+            }
             try {
               track.mediaStreamTrack.enabled = clamped > 0.0;
             } catch (_) {}
+          }
+        }
+      } else {
+        // Fallback 3: Apply volume to all remote audio tracks in the call
+        for (final p in room.remoteParticipants.values) {
+          for (final pub in p.audioTrackPublications) {
+            final track = pub.track;
+            if (track != null) {
+              if (!kIsWeb) {
+                try {
+                  await rtc.Helper.setVolume(clamped, track.mediaStreamTrack);
+                } catch (volErr) {
+                  debugPrint('rtc.Helper.setVolume error: $volErr');
+                }
+              }
+              try {
+                track.mediaStreamTrack.enabled = clamped > 0.0;
+              } catch (_) {}
+            }
           }
         }
       }

@@ -4,7 +4,6 @@ import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
 import 'package:calcx/features/calls/presentation/call_history_page.dart';
 import 'package:calcx/features/calls/presentation/active_call_page.dart';
-import 'package:calcx/features/calls/presentation/incoming_call_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:calcx/core/services/supabase_service.dart';
@@ -33,25 +32,8 @@ class _CallsPageState extends ConsumerState<CallsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final incomingCallsAsync = ref.watch(incomingCallsProvider);
     final isLight = Theme.of(context).brightness == Brightness.light;
     final subColor = isLight ? Colors.black54 : Colors.white70;
-
-    // Show incoming call screen if there's an incoming call
-    incomingCallsAsync.whenData((calls) {
-      if (calls.isNotEmpty && context.mounted) {
-        // Show incoming call page
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => IncomingCallPage(call: calls.first),
-              fullscreenDialog: true,
-            ),
-          );
-        });
-      }
-    });
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -80,6 +62,33 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                   ],
                 ),
               ),
+              IconButton(
+                tooltip: 'Clear All Call History',
+                icon: const Icon(Icons.delete_sweep_rounded),
+                onPressed: () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Clear All Call History'),
+                      content: const Text('Are you sure you want to delete all call logs? This cannot be undone.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Clear All', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await ref.read(callRepositoryProvider).clearAllCallHistory();
+                    _refreshCallHistory();
+                  }
+                },
+              ),
               IconButton.filled(
                 tooltip: 'Call History',
                 onPressed: () {
@@ -88,7 +97,7 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                     MaterialPageRoute(
                       builder: (context) => const CallHistoryPage(),
                     ),
-                  );
+                  ).then((_) => _refreshCallHistory());
                 },
                 icon: const Icon(Icons.history),
               ),
@@ -180,6 +189,8 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                     status = 'Missed';
                   } else if (call.isRejected) {
                     status = 'Declined';
+                  } else if (call.isBusy) {
+                    status = 'Busy';
                   } else if (call.duration != null) {
                     final minutes = call.duration! ~/ 60;
                     status = '${minutes}m';
@@ -187,96 +198,136 @@ class _CallsPageState extends ConsumerState<CallsPage> {
                     status = call.status;
                   }
 
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Theme.of(context).brightness == Brightness.light ? Colors.black12 : Colors.white10,
-                        width: 0.5,
+                  return Dismissible(
+                    key: Key(call.id),
+                    direction: DismissDirection.endToStart,
+                    background: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withValues(alpha: 0.8),
+                        borderRadius: BorderRadius.circular(16),
                       ),
+                      alignment: Alignment.centerRight,
+                      padding: const EdgeInsets.only(right: 20),
+                      child: const Icon(Icons.delete_rounded, color: Colors.white),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          call.isVideo ? Icons.videocam_rounded : Icons.call_rounded,
-                          color: Theme.of(context).colorScheme.primary,
+                    onDismissed: (_) async {
+                      await ref.read(callRepositoryProvider).deleteCall(call.id);
+                      _refreshCallHistory();
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.light ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Theme.of(context).brightness == Brightness.light ? Colors.black12 : Colors.white10,
+                          width: 0.5,
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                otherUserName,
-                                style: const TextStyle(fontWeight: FontWeight.w800),
-                              ),
-                              Text(
-                                '${call.callType} - $status',
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            call.isVideo ? Icons.videocam_rounded : Icons.call_rounded,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  otherUserName,
+                                  style: const TextStyle(fontWeight: FontWeight.w800),
+                                ),
+                                Text(
+                                  '${call.callType} - $status',
                                   style: TextStyle(
                                     color: subColor,
                                   ),
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        IconButton(
-                          tooltip: 'Call',
-                          onPressed: () async {
-                            try {
-                              final newCall = await ref.read(callRepositoryProvider).initiateCall(
-                                receiverId: isOutgoing ? call.receiverId : call.callerId,
-                                callType: 'audio',
-                              );
-                              if (context.mounted) {
-                                ref.read(isCallScreenShowingProvider.notifier).state = true;
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ActiveCallPage(call: newCall),
-                                  ),
-                                );
-                              }
-                            } catch (e) {
-                              if (context.mounted) {
+                          IconButton(
+                            tooltip: 'Call',
+                            onPressed: () async {
+                              final activeSession = ref.read(activeCallSessionProvider);
+                              if (activeSession != null) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: const Text('Something went wrong. Please try again.')),
+                                  const SnackBar(content: Text('You are already in an active call.')),
                                 );
+                                return;
                               }
-                            }
-                          },
-                          icon: const Icon(Icons.call_rounded),
-                        ),
-                        IconButton(
-                          tooltip: 'Video',
-                          onPressed: () async {
-                            try {
-                              final newCall = await ref.read(callRepositoryProvider).initiateCall(
-                                receiverId: isOutgoing ? call.receiverId : call.callerId,
-                                callType: 'video',
-                              );
-                              if (context.mounted) {
-                                ref.read(isCallScreenShowingProvider.notifier).state = true;
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ActiveCallPage(call: newCall),
-                                  ),
+                              try {
+                                final newCall = await ref.read(callRepositoryProvider).initiateCall(
+                                  receiverId: isOutgoing ? call.receiverId : call.callerId,
+                                  callType: 'audio',
                                 );
+                                if (context.mounted) {
+                                  ref.read(isCallScreenShowingProvider.notifier).state = true;
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ActiveCallPage(call: newCall),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: const Text('Something went wrong. Please try again.')),
+                                  );
+                                }
                               }
-                            } catch (e) {
-                              if (context.mounted) {
+                            },
+                            icon: const Icon(Icons.call_rounded),
+                          ),
+                          IconButton(
+                            tooltip: 'Video',
+                            onPressed: () async {
+                              final activeSession = ref.read(activeCallSessionProvider);
+                              if (activeSession != null) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: const Text('Something went wrong. Please try again.')),
+                                  const SnackBar(content: Text('You are already in an active call.')),
                                 );
+                                return;
                               }
-                            }
-                          },
-                          icon: const Icon(Icons.videocam_rounded),
-                        ),
-                      ],
+                              try {
+                                final newCall = await ref.read(callRepositoryProvider).initiateCall(
+                                  receiverId: isOutgoing ? call.receiverId : call.callerId,
+                                  callType: 'video',
+                                );
+                                if (context.mounted) {
+                                  ref.read(isCallScreenShowingProvider.notifier).state = true;
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ActiveCallPage(call: newCall),
+                                    ),
+                                  );
+                                }
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: const Text('Something went wrong. Please try again.')),
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.videocam_rounded),
+                          ),
+                          IconButton(
+                            tooltip: 'Delete',
+                            icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.grey),
+                            onPressed: () async {
+                              await ref.read(callRepositoryProvider).deleteCall(call.id);
+                              _refreshCallHistory();
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }).toList(),

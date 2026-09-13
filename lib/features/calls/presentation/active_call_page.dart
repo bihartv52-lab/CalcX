@@ -1,10 +1,9 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:calcx/core/models/call.dart';
 import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
-import 'package:calcx/features/calls/domain/call_participant.dart';
-import 'package:calcx/features/calls/presentation/widgets/sound_control_panel.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
 import 'package:calcx/features/chat/presentation/chat_page.dart';
 import 'package:flutter/material.dart';
@@ -31,6 +30,7 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
   bool? _userFitMode;
   final TextEditingController _callChatController = TextEditingController();
   final ScrollController _callChatScrollController = ScrollController();
+  final FocusNode _callChatFocusNode = FocusNode();
 
   @override
   void initState() {
@@ -107,8 +107,12 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
 
   Future<void> _sendCallChatMessage(String otherUserId) async {
     final text = _callChatController.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      _callChatFocusNode.requestFocus();
+      return;
+    }
     _callChatController.clear();
+    _callChatFocusNode.requestFocus();
     try {
       await ref.read(chatRepositoryProvider).sendMessage(receiverId: otherUserId, content: text);
       if (_callChatScrollController.hasClients) {
@@ -124,6 +128,10 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
           SnackBar(content: Text('Failed to send in-call message: $e')),
         );
       }
+    } finally {
+      if (mounted) {
+        _callChatFocusNode.requestFocus();
+      }
     }
   }
 
@@ -132,6 +140,7 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
     _tickerTimer?.cancel();
     _callChatController.dispose();
     _callChatScrollController.dispose();
+    _callChatFocusNode.dispose();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(isCallScreenShowingProvider.notifier).state = false;
     });
@@ -163,13 +172,11 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
       }
     });
 
-    String? otherUserId;
+    final String otherUserId = widget.call.callerId == myId ? widget.call.receiverId : widget.call.callerId;
     String? otherUserName;
     if (widget.call.callerId == myId) {
-      otherUserId = widget.call.receiverId;
       otherUserName = _receiverProfile?['display_name'] as String? ?? _receiverProfile?['username'] as String?;
     } else {
-      otherUserId = widget.call.callerId;
       otherUserName = _callerProfile?['display_name'] as String? ?? _callerProfile?['username'] as String?;
     }
     otherUserName ??= 'User';
@@ -180,10 +187,17 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
     final isWide = MediaQuery.of(context).size.width > 700;
     final isContain = _userFitMode ?? isWide;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) {
+          ref.read(isCallScreenShowingProvider.notifier).state = false;
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
           children: [
             // Video Views
             if (widget.call.isVideo && !isConnecting) ...[
@@ -250,151 +264,174 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
                 ),
               ),
 
-            // In-Call Chat Overlay Strip (Floating on Video)
-            if (_showChatOverlay && otherUserId != null)
+            // In-Call Chat Overlay Strip (Floating on Video - Frosted Glass Translucent)
+            if (_showChatOverlay)
               Builder(
                 builder: (context) {
-                  final String chatPartnerId = otherUserId!;
+                  final String chatPartnerId = otherUserId;
                   return Positioned(
                     left: 16,
                     right: 16,
                     bottom: 125,
-                    height: 240,
+                    height: 250,
                     child: Material(
                       color: Colors.transparent,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xEE141414),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
-                            width: 1.5,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.6),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            // Header
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              decoration: const BoxDecoration(
-                                border: Border(bottom: BorderSide(color: Colors.white10)),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(20),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.38),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.22),
+                                width: 1.2,
                               ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.chat_bubble_rounded, color: Colors.blueAccent, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'In-Call Chat • $otherUserName',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                    ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.4),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                // Header
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.12))),
                                   ),
-                                  const Spacer(),
-                                  GestureDetector(
-                                    onTap: () => setState(() => _showChatOverlay = false),
-                                    child: const Icon(Icons.close_rounded, color: Colors.white54, size: 20),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Chat Messages List
-                            Expanded(
-                              child: Consumer(
-                                builder: (context, ref, _) {
-                                  final messagesAsync = ref.watch(chatMessagesProvider(chatPartnerId));
-                                  return messagesAsync.when(
-                                    data: (messages) {
-                                      if (messages.isEmpty) {
-                                        return const Center(
-                                          child: Text(
-                                            'No messages yet. Send a quick chat!',
-                                            style: TextStyle(color: Colors.white38, fontSize: 12),
-                                          ),
-                                        );
-                                      }
-                                      final recent = messages.take(30).toList().reversed.toList();
-                                      return ListView.builder(
-                                        controller: _callChatScrollController,
-                                        padding: const EdgeInsets.all(10),
-                                        itemCount: recent.length,
-                                        itemBuilder: (context, index) {
-                                          final msg = recent[index];
-                                          final isMe = msg.senderId == myId;
-                                          return Align(
-                                            alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                                            child: Container(
-                                              margin: const EdgeInsets.symmetric(vertical: 3),
-                                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                              decoration: BoxDecoration(
-                                                color: isMe
-                                                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.85)
-                                                    : const Color(0xFF282828),
-                                                borderRadius: BorderRadius.circular(12),
-                                              ),
-                                              child: Text(
-                                                msg.content,
-                                                style: const TextStyle(color: Colors.white, fontSize: 12.5),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      );
-                                    },
-                                    loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                                    error: (_, __) => const Center(
-                                      child: Text('Error loading chat', style: TextStyle(color: Colors.white38, fontSize: 12)),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-
-                            // Input Field
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: const BoxDecoration(
-                                border: Border(top: BorderSide(color: Colors.white10)),
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: _callChatController,
-                                      style: const TextStyle(color: Colors.white, fontSize: 13),
-                                      decoration: InputDecoration(
-                                        hintText: 'Type a message...',
-                                        hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
-                                        isDense: true,
-                                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                        fillColor: Colors.white10,
-                                        filled: true,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(20),
-                                          borderSide: BorderSide.none,
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.chat_bubble_rounded, color: Colors.blueAccent, size: 18),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'In-Call Chat • $otherUserName',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
                                         ),
                                       ),
-                                      onSubmitted: (_) => _sendCallChatMessage(chatPartnerId),
-                                    ),
+                                      const Spacer(),
+                                      GestureDetector(
+                                        onTap: () => setState(() => _showChatOverlay = false),
+                                        child: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 6),
-                                  IconButton(
-                                    icon: const Icon(Icons.send_rounded, color: Colors.blueAccent, size: 20),
-                                    onPressed: () => _sendCallChatMessage(chatPartnerId),
+                                ),
+
+                                // Chat Messages List
+                                Expanded(
+                                  child: Consumer(
+                                    builder: (context, ref, _) {
+                                      final messagesAsync = ref.watch(chatMessagesProvider(chatPartnerId));
+                                      return messagesAsync.when(
+                                        data: (messages) {
+                                          if (messages.isEmpty) {
+                                            return const Center(
+                                              child: Text(
+                                                'No messages yet. Send a quick chat!',
+                                                style: TextStyle(color: Colors.white54, fontSize: 12),
+                                              ),
+                                            );
+                                          }
+                                          final recent = messages.take(30).toList().reversed.toList();
+                                          return ListView.builder(
+                                            controller: _callChatScrollController,
+                                            padding: const EdgeInsets.all(10),
+                                            itemCount: recent.length,
+                                            itemBuilder: (context, index) {
+                                              final msg = recent[index];
+                                              final isMe = msg.senderId == myId;
+                                              return Align(
+                                                alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                                                child: Container(
+                                                  margin: const EdgeInsets.symmetric(vertical: 3),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: isMe
+                                                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.65)
+                                                        : Colors.black.withValues(alpha: 0.45),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    border: Border.all(
+                                                      color: Colors.white.withValues(alpha: 0.15),
+                                                      width: 0.8,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    msg.content,
+                                                    style: const TextStyle(color: Colors.white, fontSize: 12.5),
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          );
+                                        },
+                                        loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                                        error: (_, __) => const Center(
+                                          child: Text('Error loading chat', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                                        ),
+                                      );
+                                    },
                                   ),
-                                ],
-                              ),
+                                ),
+
+                                // Input Field
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.12))),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _callChatController,
+                                          focusNode: _callChatFocusNode,
+                                          autofocus: true,
+                                          textInputAction: TextInputAction.send,
+                                          style: const TextStyle(color: Colors.white, fontSize: 13),
+                                          decoration: InputDecoration(
+                                            hintText: 'Type a message...',
+                                            hintStyle: const TextStyle(color: Colors.white38, fontSize: 12),
+                                            isDense: true,
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            fillColor: Colors.black.withValues(alpha: 0.3),
+                                            filled: true,
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(20),
+                                              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(20),
+                                              borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                                            ),
+                                          ),
+                                          onSubmitted: (_) {
+                                            _sendCallChatMessage(chatPartnerId);
+                                            _callChatFocusNode.requestFocus();
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      IconButton(
+                                        icon: const Icon(Icons.send_rounded, color: Colors.blueAccent, size: 20),
+                                        onPressed: () {
+                                          _sendCallChatMessage(chatPartnerId);
+                                          _callChatFocusNode.requestFocus();
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
@@ -596,6 +633,11 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
                           setState(() {
                             _showChatOverlay = !_showChatOverlay;
                           });
+                          if (_showChatOverlay) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _callChatFocusNode.requestFocus();
+                            });
+                          }
                         },
                         isActive: _showChatOverlay,
                       ),
@@ -654,8 +696,9 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 class _CallControlButton extends StatelessWidget {

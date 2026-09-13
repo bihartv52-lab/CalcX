@@ -329,17 +329,38 @@ class ChatRepository {
 
     final insertedMsg = response.firstOrNull;
 
-    // Send notification client-side
+    // Dispatch notification in background (non-blocking)
     if (insertedMsg != null) {
-      if (receiverId != null) {
-        try {
-          final senderProfile = await supabase.from('profiles').select('username').eq('id', myId).maybeSingle();
-          final senderName = senderProfile?['username'] as String? ?? 'Someone';
+      _dispatchMessageNotification(
+        supabase: supabase,
+        myId: myId,
+        receiverId: receiverId,
+        roomId: roomId,
+        insertedMsg: insertedMsg,
+        content: content,
+      );
+    }
+  }
+
+  void _dispatchMessageNotification({
+    required SupabaseClient supabase,
+    required String myId,
+    String? receiverId,
+    String? roomId,
+    required Map<String, dynamic> insertedMsg,
+    required String content,
+  }) {
+    unawaited(() async {
+      try {
+        final senderProfile = await supabase.from('profiles').select('username, display_name').eq('id', myId).maybeSingle();
+        final senderName = senderProfile?['display_name'] as String? ?? senderProfile?['username'] as String? ?? 'Friend';
+
+        if (receiverId != null) {
           await supabase.from('notifications').insert({
             'user_id': receiverId,
             'type': 'message',
-            'title': 'CalcX',
-            'body': 'You have a pending calculation.',
+            'title': senderName,
+            'body': content,
             'data': {
               'message_id': insertedMsg['id'],
               'sender_id': myId,
@@ -347,13 +368,7 @@ class ChatRepository {
               'content': content,
             },
           });
-        } catch (e) {
-          debugPrint('Error inserting message notification: $e');
-        }
-      } else if (roomId != null) {
-        try {
-          final senderProfile = await supabase.from('profiles').select('username').eq('id', myId).maybeSingle();
-          final senderName = senderProfile?['username'] as String? ?? 'Someone';
+        } else if (roomId != null) {
           final participants = await supabase.from('room_participants').select('user_id').eq('room_id', roomId);
           final List<dynamic> list = participants as List<dynamic>? ?? [];
           final List<Map<String, dynamic>> notificationInserts = [];
@@ -363,8 +378,8 @@ class ChatRepository {
               notificationInserts.add({
                 'user_id': pUserId,
                 'type': 'message',
-                'title': 'CalcX',
-                'body': 'You have a pending calculation.',
+                'title': senderName,
+                'body': content,
                 'data': {
                   'room_id': roomId,
                   'message_id': insertedMsg['id'],
@@ -378,11 +393,11 @@ class ChatRepository {
           if (notificationInserts.isNotEmpty) {
             await supabase.from('notifications').insert(notificationInserts);
           }
-        } catch (e) {
-          debugPrint('Error inserting room message notifications: $e');
         }
+      } catch (e) {
+        debugPrint('Error dispatching message notification: $e');
       }
-    }
+    }());
   }
 
   Future<void> sendMediaMessage({
@@ -412,7 +427,7 @@ class ChatRepository {
 
     final insertedMsg = response.firstOrNull;
 
-    // Send notification client-side
+    // Dispatch notification in background (non-blocking)
     if (insertedMsg != null) {
       final notificationBody = messageType == 'image'
           ? 'Sent an image'
@@ -420,59 +435,16 @@ class ChatRepository {
               ? 'Sent a video'
               : messageType == 'audio' || messageType == 'voice'
                   ? 'Sent a voice message'
-                  : 'Sent a file';
+                  : 'Sent an attachment';
 
-      if (receiverId != null) {
-        try {
-          final senderProfile = await supabase.from('profiles').select('username').eq('id', myId).maybeSingle();
-          final senderName = senderProfile?['username'] as String? ?? 'Someone';
-          await supabase.from('notifications').insert({
-            'user_id': receiverId,
-            'type': 'message',
-            'title': 'CalcX',
-            'body': 'You have a pending calculation.',
-            'data': {
-              'message_id': insertedMsg['id'],
-              'sender_id': myId,
-              'sender_name': senderName,
-              'content': notificationBody,
-            },
-          });
-        } catch (e) {
-          debugPrint('Error inserting media message notification: $e');
-        }
-      } else if (roomId != null) {
-        try {
-          final senderProfile = await supabase.from('profiles').select('username').eq('id', myId).maybeSingle();
-          final senderName = senderProfile?['username'] as String? ?? 'Someone';
-          final participants = await supabase.from('room_participants').select('user_id').eq('room_id', roomId);
-          final List<dynamic> list = participants as List<dynamic>? ?? [];
-          final List<Map<String, dynamic>> notificationInserts = [];
-          for (final p in list) {
-            final pUserId = p['user_id'] as String?;
-            if (pUserId != null && pUserId != myId) {
-              notificationInserts.add({
-                'user_id': pUserId,
-                'type': 'message',
-                'title': 'CalcX',
-                'body': 'You have a pending calculation.',
-                'data': {
-                  'room_id': roomId,
-                  'message_id': insertedMsg['id'],
-                  'sender_id': myId,
-                  'sender_name': senderName,
-                  'content': notificationBody,
-                },
-              });
-            }
-          }
-          if (notificationInserts.isNotEmpty) {
-            await supabase.from('notifications').insert(notificationInserts);
-          }
-        } catch (e) {
-          debugPrint('Error inserting room media message notifications: $e');
-        }
-      }
+      _dispatchMessageNotification(
+        supabase: supabase,
+        myId: myId,
+        receiverId: receiverId,
+        roomId: roomId,
+        insertedMsg: insertedMsg,
+        content: notificationBody,
+      );
     }
   }
 

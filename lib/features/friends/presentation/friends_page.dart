@@ -337,6 +337,15 @@ class _FriendTile extends ConsumerWidget {
               context.push('/chat/${friend.id}');
               break;
             case 'call':
+              final activeSession = ref.read(activeCallSessionProvider);
+              if (activeSession != null) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('You are already in an active call.')),
+                  );
+                }
+                break;
+              }
               // Initiate audio call directly
               try {
                 final callRepo = ref.read(callRepositoryProvider);

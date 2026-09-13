@@ -66,6 +66,7 @@ class Call {
   bool get isEnded => status == 'ended';
   bool get isMissed => status == 'missed';
   bool get isRejected => status == 'rejected';
+  bool get isBusy => status == 'busy';
 
   bool get isAudio => callType == 'audio';
   bool get isVideo => callType == 'video';

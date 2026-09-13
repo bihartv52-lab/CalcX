@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:calcx/core/models/call.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:flutter/foundation.dart';
@@ -74,13 +75,56 @@ class CallRepository {
     final supabase = _supabase;
     if (supabase == null) return;
 
-    await supabase
-        .from('calls')
-        .update({
-          'status': 'rejected',
-          'ended_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', callId);
+    try {
+      final call = await getCallById(callId);
+      await supabase
+          .from('calls')
+          .update({
+            'status': 'rejected',
+            'ended_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', callId);
+
+      if (call != null) {
+        await _recordCallMessage(
+          callerId: call.callerId,
+          receiverId: call.receiverId,
+          callType: call.callType,
+          status: 'rejected',
+          callId: callId,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error rejecting call: $e');
+    }
+  }
+
+  Future<void> rejectCallWithBusy(String callId) async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+
+    try {
+      final call = await getCallById(callId);
+      await supabase
+          .from('calls')
+          .update({
+            'status': 'busy',
+            'ended_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', callId);
+
+      if (call != null) {
+        await _recordCallMessage(
+          callerId: call.callerId,
+          receiverId: call.receiverId,
+          callType: call.callType,
+          status: 'busy',
+          callId: callId,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error rejecting call with busy: $e');
+    }
   }
 
   Future<void> endCall(String callId, {DateTime? startTime}) async {
@@ -92,27 +136,109 @@ class CallRepository {
         ? null
         : endTime.difference(startTime).inSeconds;
 
-    await supabase
-        .from('calls')
-        .update({
-          'status': 'ended',
-          'ended_at': endTime.toIso8601String(),
-          'duration': duration,
-        })
-        .eq('id', callId);
+    try {
+      final call = await getCallById(callId);
+      await supabase
+          .from('calls')
+          .update({
+            'status': 'ended',
+            'ended_at': endTime.toIso8601String(),
+            'duration': duration,
+          })
+          .eq('id', callId);
+
+      if (call != null) {
+        await _recordCallMessage(
+          callerId: call.callerId,
+          receiverId: call.receiverId,
+          callType: call.callType,
+          status: 'ended',
+          duration: duration,
+          callId: callId,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error ending call: $e');
+    }
   }
 
   Future<void> markAsMissed(String callId) async {
     final supabase = _supabase;
     if (supabase == null) return;
 
-    await supabase
-        .from('calls')
-        .update({
-          'status': 'missed',
-          'ended_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', callId);
+    try {
+      final call = await getCallById(callId);
+      await supabase
+          .from('calls')
+          .update({
+            'status': 'missed',
+            'ended_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', callId);
+
+      if (call != null) {
+        await _recordCallMessage(
+          callerId: call.callerId,
+          receiverId: call.receiverId,
+          callType: call.callType,
+          status: 'missed',
+          callId: callId,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error marking call as missed: $e');
+    }
+  }
+
+  Future<void> _recordCallMessage({
+    required String callerId,
+    required String receiverId,
+    required String callType,
+    required String status,
+    int? duration,
+    required String callId,
+  }) async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      // Prevent duplicate call messages
+      final existing = await supabase
+          .from('messages')
+          .select('id')
+          .eq('message_type', 'call')
+          .like('media_url', '%$callId%')
+          .maybeSingle();
+      if (existing != null) return;
+
+      final isAudio = callType == 'audio';
+      final typeLabel = isAudio ? 'Voice Call' : 'Video Call';
+
+      final payload = jsonEncode({
+        'call_id': callId,
+        'call_type': callType,
+        'status': status,
+        'duration': duration ?? 0,
+        'caller_id': callerId,
+        'receiver_id': receiverId,
+      });
+
+      // Sender must be auth.uid() according to RLS INSERT policy
+      final targetReceiver = myId == callerId ? receiverId : callerId;
+
+      await supabase.from('messages').insert({
+        'sender_id': myId,
+        'receiver_id': targetReceiver,
+        'content': typeLabel,
+        'message_type': 'call',
+        'media_url': payload,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('Error recording in-chat call message: $e');
+    }
   }
 
   Stream<List<Call>> watchIncomingCalls() {
@@ -201,6 +327,23 @@ class CallRepository {
       await supabase.from('calls').delete().eq('id', callId);
     } catch (e) {
       debugPrint('Error deleting call: $e');
+    }
+  }
+
+  Future<void> clearAllCallHistory() async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      await supabase
+          .from('calls')
+          .delete()
+          .or('caller_id.eq.$myId,receiver_id.eq.$myId');
+    } catch (e) {
+      debugPrint('Error clearing call history: $e');
     }
   }
 

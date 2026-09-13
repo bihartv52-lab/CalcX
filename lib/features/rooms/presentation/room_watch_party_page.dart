@@ -576,6 +576,8 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           enableCaption: true,
         ),
       );
+      _youtubeController?.unMute();
+      _youtubeController?.setVolume(100);
 
       setState(() {
         _sourceType = 'youtube';
@@ -641,6 +643,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           url,
         ),
       );
+      _betterPlayerController?.setVolume(1.0);
 
       setState(() {
         _sourceType = 'url';
@@ -684,6 +687,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           _localFilePath!,
         ),
       );
+      _betterPlayerController?.setVolume(1.0);
 
       setState(() {
         _sourceType = 'local';

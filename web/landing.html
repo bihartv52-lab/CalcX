@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CalcX - Calculations on the Surface. Unlimited Connection Beneath.</title>
+  <meta name="description" content="The ultimate private communication, watch party, and arcade suite disguised as a fully functional calculator.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #00DBE9;
+      --primary-glow: rgba(0, 219, 233, 0.4);
+      --secondary: #B600F8;
+      --secondary-glow: rgba(182, 0, 248, 0.35);
+      --emerald: #00E676;
+      --bg: #07090E;
+      --surface: #0E121A;
+      --surface-border: rgba(255, 255, 255, 0.08);
+      --text: #FFFFFF;
+      --text-muted: rgba(255, 255, 255, 0.65);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Ambient Glow */
+    .ambient-glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, var(--primary-glow) 0%, rgba(182, 0, 248, 0.15) 50%, transparent 70%);
+      top: -150px;
+      left: 50%;
+      transform: translateX(-50%);
+      filter: blur(100px);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11, 14, 20, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--surface-border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      box-shadow: 0 4px 16px var(--primary-glow);
+    }
+
+    .brand-title {
+      font-size: 22px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-ver {
+      font-size: 10px;
+      background: rgba(0, 219, 233, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(0, 219, 233, 0.4);
+      padding: 2px 8px;
+      border-radius: 20px;
+      margin-left: 6px;
+      font-weight: 700;
+    }
+
+    .nav-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 14px;
+      text-decoration: none;
+      transition: all 0.25s ease;
+      cursor: pointer;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #000;
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      background: #00f0ff;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px var(--primary-glow);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--primary);
+    }
+
+    .btn-outline:hover {
+      background: rgba(0, 219, 233, 0.1);
+      transform: translateY(-2px);
+    }
+
+    .btn-dark {
+      background: #121722;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-dark:hover {
+      background: #1a2233;
+      transform: translateY(-2px);
+    }
+
+    /* Hero */
+    .hero {
+      position: relative;
+      z-index: 1;
+      padding: 70px 24px 50px;
+      max-width: 1100px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .stealth-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(22, 28, 38, 0.9);
+      border: 1px solid rgba(0, 219, 233, 0.35);
+      border-radius: 30px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--primary);
+      margin-bottom: 24px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--emerald);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--emerald);
+    }
+
+    .hero h1 {
+      font-size: clamp(34px, 6vw, 62px);
+      font-weight: 900;
+      line-height: 1.12;
+      letter-spacing: -1px;
+      margin-bottom: 20px;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #fff 30%, var(--primary) 70%, var(--secondary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-sub {
+      font-size: clamp(16px, 2.5vw, 19px);
+      color: var(--text-muted);
+      max-width: 760px;
+      margin: 0 auto 36px;
+      line-height: 1.6;
+    }
+
+    .hero-ctas {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 50px;
+    }
+
+    .btn-large {
+      padding: 16px 32px;
+      font-size: 16px;
+      border-radius: 12px;
+    }
+
+    /* Showcase Frame */
+    .showcase-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      text-align: left;
+      margin-top: 20px;
+    }
+
+    .tabs-bar {
+      display: flex;
+      gap: 8px;
+      background: #080B10;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--surface-border);
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-muted);
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tab-btn.active {
+      background: rgba(0, 219, 233, 0.12);
+      border-color: var(--primary);
+      color: #fff;
+    }
+
+    .tab-content {
+      display: none;
+      padding: 32px;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .tab-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .tab-tagline {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .tab-title {
+      font-size: 24px;
+      font-weight: 900;
+      color: #fff;
+    }
+
+    .tab-desc {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-bottom: 24px;
+    }
+
+    .preview-box {
+      background: #06080C;
+      border: 1px solid var(--surface-border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    /* Calculator Grid */
+    .calc-screen {
+      background: #101520;
+      border-radius: 12px;
+      padding: 16px 20px;
+      text-align: right;
+      margin-bottom: 16px;
+    }
+
+    .calc-screen-sub {
+      color: rgba(255, 255, 255, 0.4);
+      font-size: 14px;
+    }
+
+    .calc-screen-main {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--primary);
+    }
+
+    .calc-keys {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .calc-key {
+      background: #181F2C;
+      border: none;
+      color: #fff;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .calc-key.op {
+      background: #242E40;
+      color: var(--primary);
+    }
+
+    .calc-key.accent {
+      background: var(--primary);
+      color: #000;
+    }
+
+    .calc-key.panic {
+      background: rgba(255, 23, 68, 0.2);
+      color: #FF1744;
+      border: 1px solid rgba(255, 23, 68, 0.4);
+    }
+
+    /* Features Section */
+    .section {
+      padding: 80px 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .section-tag {
+      text-align: center;
+      color: var(--primary);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      text-align: center;
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 900;
+      margin-bottom: 50px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      border-radius: 20px;
+      padding: 32px;
+      transition: all 0.3s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(0, 219, 233, 0.35);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .feature-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      margin-bottom: 20px;
+    }
+
+    .feature-title {
+      font-size: 20px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .feature-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* Steps */
+    .steps-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+
+    .step-card {
+      background: #101520;
+      border: 1px solid rgba(0, 219, 233, 0.2);
+      border-radius: 20px;
+      padding: 32px;
+      position: relative;
+    }
+
+    .step-num {
+      font-size: 36px;
+      font-weight: 900;
+      color: var(--primary);
+      margin-bottom: 12px;
+    }
+
+    /* CTA Banner */
+    .cta-banner {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      border-radius: 32px;
+      padding: 60px 36px;
+      text-align: center;
+      color: #000;
+      margin: 40px auto;
+      max-width: 1050px;
+      box-shadow: 0 20px 60px rgba(0, 219, 233, 0.35);
+    }
+
+    .cta-banner h2 {
+      font-size: clamp(28px, 4vw, 44px);
+      font-weight: 900;
+      line-height: 1.2;
+      margin-bottom: 16px;
+    }
+
+    .cta-banner p {
+      font-size: 16px;
+      max-width: 680px;
+      margin: 0 auto 32px;
+      color: rgba(0, 0, 0, 0.78);
+      font-weight: 600;
+    }
+
+    /* Footer */
+    footer {
+      background: #040609;
+      border-top: 1px solid var(--surface-border);
+      padding: 40px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    @media (max-width: 768px) {
+      header {
+        padding: 14px 20px;
+      }
+      .brand-title {
+        font-size: 18px;
+      }
+      .tab-content {
+        padding: 20px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="ambient-glow"></div>
+
+  <!-- Header -->
+  <header>
+    <a href="#" class="brand">
+      <div class="brand-icon">🧮</div>
+      <div>
+        <span class="brand-title">CalcX</span>
+        <span class="badge-ver">v1.0.1</span>
+      </div>
+    </a>
+    <div class="nav-actions">
+      <a href="CalcX.apk" class="btn btn-outline" download>📥 APK</a>
+      <a href="index.html" class="btn btn-primary">🚀 Launch App</a>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <main class="hero">
+    <div class="stealth-pill">
+      <span class="status-dot"></span>
+      100% PRIVATE • ZERO DISCOVERY • DISGUISED BEHIND MATH
+    </div>
+
+    <h1>
+      Disguised on the Surface.<br>
+      <span class="gradient-text">Boundless Connection Inside.</span>
+    </h1>
+
+    <p class="hero-sub">
+      CalcX looks and acts like a standard mathematical calculator. Enter your secret passcode to reveal encrypted direct messaging, studio-grade LiveKit voice/video calls with live volume mixers, synchronized cinema watch parties, and multiplayer arcade gaming.
+    </p>
+
+    <div class="hero-ctas">
+      <a href="index.html" class="btn btn-primary btn-large">
+        🚀 Launch Web App
+      </a>
+      <a href="CalcX.apk" class="btn btn-dark btn-large" download>
+        📥 Download Android APK (111 MB)
+      </a>
+    </div>
+
+    <!-- Showcase Tabs -->
+    <div class="showcase-card">
+      <div class="tabs-bar">
+        <button class="tab-btn active" onclick="switchTab(0)">🧮 Stealth Disguise</button>
+        <button class="tab-btn" onclick="switchTab(1)">💬 Encrypted Chat</button>
+        <button class="tab-btn" onclick="switchTab(2)">📞 HD Calls & Mixer</button>
+        <button class="tab-btn" onclick="switchTab(3)">🍿 Cinema Watch Party</button>
+        <button class="tab-btn" onclick="switchTab(4)">🎮 Arcade Zone</button>
+      </div>
+
+      <!-- Tab 0: Calculator -->
+      <div class="tab-content active" id="tab-0">
+        <div class="tab-header">
+          <div>
+            <div class="tab-tagline">Stealth Passcode Protection</div>
+            <div class="tab-title">Functional Calculator Gate</div>
+          </div>
+          <span class="badge-ver" style="font-size:11px; padding:4px 10px;">STEALTH READY</span>
+        </div>
+        <div class="tab-desc">
+          Anyone picking up your device only sees normal arithmetic computation. Your secret code (e.g. 1234=) dissolves the disguise instantly.
+        </div>
+        <div class="preview-box">
+          <div class="calc-screen">
+            <div class="calc-screen-sub">1234 = ?</div>
+            <div class="calc-screen-main">Secret Formula Unlocked 🔓</div>
+          </div>
+          <div class="calc-keys">
+            <div class="calc-key op">C</div>
+            <div class="calc-key op">±</div>
+            <div class="calc-key op">%</div>
+            <div class="calc-key op">÷</div>
+            <div class="calc-key">7</div>
+            <div class="calc-key">8</div>
+            <div class="calc-key">9</div>
+            <div class="calc-key op">×</div>
+            <div class="calc-key">4</div>
+            <div class="calc-key">5</div>
+            <div class="calc-key">6</div>
+            <div class="calc-key op">-</div>
+            <div class="calc-key">1</div>
+            <div class="calc-key">2</div>
+            <div class="calc-key">3</div>
+            <div class="calc-key op">+</div>
+            <div class="calc-key">0</div>
+            <div class="calc-key">.</div>
+            <div class="calc-key panic">🚨 Panic</div>
+            <div class="calc-key accent">=</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 1: Chat -->
+      <div class="tab-content" id="tab-1">
+        <div class="tab-header">
+          <div>
+            <div class="tab-tagline">Optimistic & Fast</div>
+            <div class="tab-title">Instagram DM Style Messaging</div>
+          </div>
+          <span class="badge-ver" style="font-size:11px; padding:4px 10px;">&lt; 100ms SEND</span>
+        </div>
+        <div class="tab-desc">
+          Instant optimistic messaging, voice notes with live waveforms & audio durations, video attachments, and dual-orientation wallpapers (9:16 portrait phone & 16:9 widescreen).
+        </div>
+        <div class="preview-box" style="display:flex; flex-direction:column; gap:14px;">
+          <div style="background:#1D2635; padding:14px 18px; border-radius:16px; align-self:flex-start; max-width:80%;">
+            Hey! Did you check out the synchronized movie watch party? 🍿
+            <div style="font-size:10px; color:rgba(255,255,255,0.4); margin-top:4px;">10:42 PM</div>
+          </div>
+          <div style="background:linear-gradient(135deg, #00DBE9, #00E676); color:#000; padding:12px 18px; border-radius:16px; align-self:flex-end; font-weight:bold; display:flex; align-items:center; gap:10px;">
+            <span>▶️ 0:45 • Voice Note</span>
+            <div style="display:flex; gap:2px; align-items:center;">
+              <span style="display:inline-block; width:3px; height:12px; background:#000;"></span>
+              <span style="display:inline-block; width:3px; height:20px; background:#000;"></span>
+              <span style="display:inline-block; width:3px; height:8px; background:#000;"></span>
+              <span style="display:inline-block; width:3px; height:24px; background:#000;"></span>
+              <span style="display:inline-block; width:3px; height:14px; background:#000;"></span>
+            </div>
+          </div>
+          <div style="background:rgba(0, 230, 118, 0.1); border:1px solid rgba(0, 230, 118, 0.3); color:#00E676; padding:8px 14px; border-radius:20px; font-size:12px; align-self:center;">
+            🖼️ Dual Wallpaper Active: 9:16 Portrait Phone & 16:9 Widescreen Desktop
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Calls -->
+      <div class="tab-content" id="tab-2">
+        <div class="tab-header">
+          <div>
+            <div class="tab-tagline">LiveKit WebRTC Powered</div>
+            <div class="tab-title">Studio HD Calls & Sound Mixer</div>
+          </div>
+          <span class="badge-ver" style="font-size:11px; padding:4px 10px;">FLOAT & CHAT</span>
+        </div>
+        <div class="tab-desc">
+          Peer-to-peer and room calls with floating picture-in-picture, frosted glass in-call chat with autofocus, and per-participant volume sliders.
+        </div>
+        <div class="preview-box">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="width:10px; height:10px; background:#FF1744; border-radius:50%; display:inline-block;"></span>
+              <strong>Active Video Call • 04:32</strong>
+            </div>
+            <span style="background:rgba(182, 0, 248, 0.2); color:#B600F8; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:bold;">Frosted Chat Overlay</span>
+          </div>
+          <div style="background:#141923; padding:16px; border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:13px; font-weight:bold;">
+              <span>🔊 Participant Sound Volume Mixer</span>
+              <span style="color:#B600F8;">85%</span>
+            </div>
+            <div style="background:rgba(255,255,255,0.1); height:8px; border-radius:4px; overflow:hidden;">
+              <div style="width:85%; height:100%; background:#B600F8;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Watch Party -->
+      <div class="tab-content" id="tab-3">
+        <div class="tab-header">
+          <div>
+            <div class="tab-tagline">Sub-500ms Realtime Sync</div>
+            <div class="tab-title">Synchronized Movie Cinema</div>
+          </div>
+          <span class="badge-ver" style="font-size:11px; padding:4px 10px;">AUTO DRIFT CORRECTION</span>
+        </div>
+        <div class="tab-desc">
+          Stream YouTube videos, web cinema, or direct video URLs with synchronized play/pause/seek broadcast and room voice chat.
+        </div>
+        <div class="preview-box" style="text-align:center; padding:40px 20px; background:linear-gradient(135deg, rgba(255, 87, 34, 0.2), #0F1520);">
+          <div style="font-size:50px; margin-bottom:10px;">🎬</div>
+          <div style="font-weight:bold; font-size:18px;">Now Synchronizing Cinema Playback</div>
+          <div style="color:var(--emerald); font-size:13px; margin-top:6px;">⚡ Drift &lt; 500ms • Audio Auto-Unmuted • Voice Calling Active</div>
+        </div>
+      </div>
+
+      <!-- Tab 4: Arcade -->
+      <div class="tab-content" id="tab-4">
+        <div class="tab-header">
+          <div>
+            <div class="tab-tagline">Real-Time Multiplayer</div>
+            <div class="tab-title">Arcade Game Zone</div>
+          </div>
+          <span class="badge-ver" style="font-size:11px; padding:4px 10px;">SCRIBBLE & LUDO</span>
+        </div>
+        <div class="tab-desc">
+          Challenge your friends to live multiplayer Scribble (drawing & word guessing canvas) and synchronized Ludo board battles while voice chatting.
+        </div>
+        <div class="preview-box" style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div style="background:#141923; padding:20px; border-radius:12px; text-align:center;">
+            <div style="font-size:36px;">🎨</div>
+            <div style="font-weight:bold; margin-top:8px;">Scribble Live</div>
+            <div style="font-size:12px; color:var(--text-muted);">Real-time canvas & guessing</div>
+          </div>
+          <div style="background:#141923; padding:20px; border-radius:12px; text-align:center;">
+            <div style="font-size:36px;">🎲</div>
+            <div style="font-weight:bold; margin-top:8px;">Ludo Multiplayer</div>
+            <div style="font-size:12px; color:var(--text-muted);">Turn-based synchronized board</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Features Grid -->
+  <section class="section">
+    <div class="section-tag">ENGINEERED FOR SUPREME PRIVACY & ENTERTAINMENT</div>
+    <h2 class="section-title">Everything You Need. Completely Disguised.</h2>
+    <div class="grid-3">
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(0, 219, 233, 0.15); color:var(--primary);">🧮</div>
+        <h3 class="feature-title">Stealth Calculator Disguise</h3>
+        <p class="feature-desc">Looks and behaves like an authentic math calculator. One-tap Panic mode instantly locks the session and restores the calculator interface.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(0, 230, 118, 0.15); color:var(--emerald);">💬</div>
+        <h3 class="feature-title">Private Direct Messaging</h3>
+        <p class="feature-desc">Ultra-fast optimistic messages, voice notes with live audio durations and download spinners, video previews, and dual-orientation wallpapers.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(182, 0, 248, 0.15); color:var(--secondary);">📞</div>
+        <h3 class="feature-title">Studio HD Calls & Mixer</h3>
+        <p class="feature-desc">High definition voice/video calls powered by LiveKit WebRTC, floating overlay, frosted glass in-call chat with auto-focus, and per-user volume sliders.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(255, 87, 34, 0.15); color:#FF5722);">🍿</div>
+        <h3 class="feature-title">Synchronized Watch Parties</h3>
+        <p class="feature-desc">Stream YouTube and web videos together with sub-500ms broadcast drift correction and integrated room voice calling.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(255, 214, 0, 0.15); color:#FFD600);">🎮</div>
+        <h3 class="feature-title">Multiplayer Arcade Zone</h3>
+        <p class="feature-desc">Enjoy interactive multiplayer games like Scribble drawing canvas and live Ludo with synchronized turn states and party lobby voice.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon" style="background:rgba(41, 121, 255, 0.15); color:#2979FF);">🔒</div>
+        <h3 class="feature-title">Masked Stealth Notifications</h3>
+        <p class="feature-desc">Incoming notifications are disguised as math calculation updates. Alerts are automatically suppressed when chatting inside that conversation.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it Works -->
+  <section class="section" style="background:#080B11; border-radius:30px; margin-bottom:60px;">
+    <div class="section-tag">THREE EASY STEPS</div>
+    <h2 class="section-title">How The Disguise Operates</h2>
+    <div class="steps-container">
+      <div class="step-card">
+        <div class="step-num">01</div>
+        <h3 style="font-size:20px; font-weight:800; margin-bottom:8px;">Compute Normally</h3>
+        <p style="color:var(--text-muted); font-size:14px;">Open the app anytime. It is a genuine, working mathematical calculator with decimal math and calculation history.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">02</div>
+        <h3 style="font-size:20px; font-weight:800; margin-bottom:8px;">Enter Secret Code</h3>
+        <p style="color:var(--text-muted); font-size:14px;">Punch in your secret passcode (e.g. 1234=) to dissolve the calculator and reveal your private social dashboard.</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">03</div>
+        <h3 style="font-size:20px; font-weight:800; margin-bottom:8px;">Tap Panic Anytime</h3>
+        <p style="color:var(--text-muted); font-size:14px;">If someone enters the room, tap the red Panic button to instantly disguise the screen back to normal calculator mode.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Banner -->
+  <div class="cta-banner">
+    <h2>Ready to Experience CalcX?</h2>
+    <p>Install the native Android APK for full background notifications & calling, or launch directly in any modern web browser with zero installation.</p>
+    <div style="display:flex; flex-wrap:wrap; justify-content:center; gap:16px;">
+      <a href="CalcX.apk" class="btn btn-dark btn-large" download style="background:#000; color:#fff; border:none;">
+        📥 Download CalcX.apk (111 MB)
+      </a>
+      <a href="index.html" class="btn btn-large" style="background:#fff; color:#000; border:none;">
+        🚀 Open Web App
+      </a>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div style="font-size:16px; font-weight:bold; color:#fff; margin-bottom:10px;">🧮 CalcX Disguised Social Suite</div>
+    <p>Powered by Flutter Web • Supabase Auth & Realtime • LiveKit WebRTC</p>
+    <p style="margin-top:8px; opacity:0.6;">© 2026 CalcX by bihartv52-lab. All rights reserved.</p>
+  </footer>
+
+  <script>
+    function switchTab(index) {
+      document.querySelectorAll('.tab-btn').forEach((btn, i) => {
+        btn.classList.toggle('active', i === index);
+      });
+      document.querySelectorAll('.tab-content').forEach((content, i) => {
+        content.classList.toggle('active', i === index);
+      });
+    }
+  </script>
+</body>
+</html>
