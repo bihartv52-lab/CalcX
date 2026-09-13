@@ -245,7 +245,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _launchApkDownload() async {
-    final url = Uri.parse('https://calcx.vercel.app');
+    final url = Uri.parse('https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk');
     if (await canLaunchUrl(url)) {
       await launchUrl(url, mode: LaunchMode.externalApplication);
     } else {
