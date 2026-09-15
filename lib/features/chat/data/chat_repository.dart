@@ -264,6 +264,45 @@ class ChatRepository {
     }
   }
 
+  Future<List<Message>> fetchOlderDirectMessages(String otherUserId, DateTime before, {int limit = 30}) async {
+    final supabase = _supabase;
+    if (supabase == null) return [];
+
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return [];
+
+    try {
+      final response = await supabase
+          .from('messages')
+          .select('*, message_reactions(emoji, user_id), message_reads(user_id)')
+          .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
+          .filter('room_id', 'is', null)
+          .lt('created_at', before.toIso8601String())
+          .order('created_at', ascending: false)
+          .limit(limit);
+
+      final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
+      
+      final controller = _activeDirectControllers[otherUserId];
+      if (controller != null && !controller.isClosed) {
+        final currentCache = _activeDirectCaches[otherUserId] ?? [];
+        final currentIds = currentCache.map((m) => m.id).toSet();
+        final newOldMessages = list.where((m) => !currentIds.contains(m.id)).toList();
+        if (newOldMessages.isNotEmpty) {
+          final updated = [...currentCache, ...newOldMessages];
+          updated.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+          _activeDirectCaches[otherUserId] = updated;
+          controller.add(updated);
+        }
+      }
+
+      return list;
+    } catch (e) {
+      debugPrint('Error fetching older direct messages: $e');
+      return [];
+    }
+  }
+
   Stream<List<Message>> watchDirectMessages(String otherUserId, {int limit = 100}) {
     final supabase = _supabase;
     if (supabase == null) return const Stream.empty();

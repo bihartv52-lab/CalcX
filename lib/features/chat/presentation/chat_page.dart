@@ -101,10 +101,8 @@ final chatMessageLimitsProvider = NotifierProvider<ChatMessageLimitsNotifier, Ma
 );
 
 final chatMessagesProvider = StreamProvider.family<List<Message>, String>((ref, userId) {
-  final limits = ref.watch(chatMessageLimitsProvider);
-  final limit = limits[userId] ?? 30;
   final repository = ref.watch(chatRepositoryProvider);
-  return repository.watchDirectMessages(userId, limit: limit);
+  return repository.watchDirectMessages(userId, limit: 50);
 });
 
 final otherUserProfileProvider = StreamProvider.family<UserProfile?, String>((ref, userId) {
@@ -233,6 +231,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   int _recordDuration = 0;
   Timer? _recordTimer;
   late final AudioRecorder _audioRecorder;
+  bool _isLoadingOlder = false;
+  bool _hasMoreOlder = true;
 
   // Map to store keys for message elements so we can scroll to them
   final Map<String, GlobalKey> _messageKeys = {};
@@ -536,9 +536,43 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       });
     }
 
+    // When user scrolls towards the top (older messages in reverse list)
     if (_scrollController.position.maxScrollExtent > 0 &&
-        currentScroll >= _scrollController.position.maxScrollExtent - 200) {
-      ref.read(chatMessageLimitsProvider.notifier).incrementLimit(widget.otherUserId);
+        currentScroll >= _scrollController.position.maxScrollExtent - 250) {
+      _loadOlderMessages();
+    }
+  }
+
+  Future<void> _loadOlderMessages() async {
+    if (_isLoadingOlder || !_hasMoreOlder) return;
+    if (_allMessages.isEmpty) return;
+
+    setState(() {
+      _isLoadingOlder = true;
+    });
+
+    try {
+      final oldestMsg = _allMessages.last;
+      final olderMessages = await ref.read(chatRepositoryProvider).fetchOlderDirectMessages(
+        widget.otherUserId,
+        oldestMsg.createdAt,
+        limit: 30,
+      );
+
+      if (mounted) {
+        setState(() {
+          _isLoadingOlder = false;
+          if (olderMessages.isEmpty) {
+            _hasMoreOlder = false;
+          }
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingOlder = false;
+        });
+      }
     }
   }
 
@@ -1480,30 +1514,35 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     ref.listen(chatMessagesProvider(widget.otherUserId), (prev, next) {
       final messages = next.value ?? [];
       final prevMessages = prev?.value ?? [];
-      final prevCount = prevMessages.length;
       
       ref.read(chatRepositoryProvider).markAllAsRead(widget.otherUserId);
       ref.invalidate(recentChatsProvider);
 
-      // Only scroll to bottom or show new message banner if a NEW message arrived at the bottom
-      // (Do NOT trigger when paginating/scrolling up to view older messages)
-      final hasNewLatestMessage = messages.isNotEmpty &&
-          (prevMessages.isEmpty || messages.first.id != prevMessages.first.id);
+      if (messages.isEmpty) return;
 
-      if (hasNewLatestMessage && messages.length > prevCount) {
-        final lastMsg = messages.first;
-        final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
-        final isFromMe = lastMsg.senderId == myId;
+      // Only scroll to bottom or show new message banner if a NEW message arrived at the bottom (index 0)
+      // (Do NOT trigger when loading older messages)
+      if (prevMessages.isNotEmpty) {
+        final newestMsg = messages.first;
+        final prevNewestMsg = prevMessages.first;
 
-        if (isFromMe || _isNearBottom) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom();
-          });
-        } else {
-          setState(() {
-            _showNewMessagesBanner = true;
-            _unreadCount = messages.length - prevCount;
-          });
+        final hasBrandNewBottomMessage = newestMsg.id != prevNewestMsg.id &&
+            newestMsg.createdAt.isAfter(prevNewestMsg.createdAt);
+
+        if (hasBrandNewBottomMessage) {
+          final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
+          final isFromMe = newestMsg.senderId == myId;
+
+          if (isFromMe || _isNearBottom) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _scrollToBottom();
+            });
+          } else {
+            setState(() {
+              _showNewMessagesBanner = true;
+              _unreadCount = _unreadCount + 1;
+            });
+          }
         }
       }
     });
@@ -2018,14 +2057,30 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
                             reverse: true,
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                            itemCount: filteredMessages.length + (isTypingAsync.value == true ? 1 : 0),
+                            itemCount: filteredMessages.length +
+                                (isTypingAsync.value == true ? 1 : 0) +
+                                (_isLoadingOlder && _searchQuery.isEmpty ? 1 : 0),
                             itemBuilder: (context, index) {
                               final hasTyping = isTypingAsync.value == true;
                               if (hasTyping && index == 0) {
                                 return _buildTypingBubble(context, otherUser);
                               }
 
-                              final messageIndex = hasTyping ? index - 1 : index;
+                              final shiftedIndex = hasTyping ? index - 1 : index;
+                              if (_isLoadingOlder && _searchQuery.isEmpty && shiftedIndex == filteredMessages.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16.0),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    ),
+                                  ),
+                                );
+                              }
+
+                              final messageIndex = shiftedIndex;
                               final message = filteredMessages[messageIndex];
                               final isMe = message.senderId != widget.otherUserId;
 
