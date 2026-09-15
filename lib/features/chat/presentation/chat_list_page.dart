@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +24,45 @@ class ChatListPage extends ConsumerStatefulWidget {
 
 class _ChatListPageState extends ConsumerState<ChatListPage> {
   String _searchQuery = '';
+  RealtimeChannel? _messagesChannel;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    final supabase = SupabaseService.clientOrNull;
+    final myId = supabase?.auth.currentUser?.id;
+    if (supabase != null && myId != null) {
+      _messagesChannel = supabase.channel('chat_list_updates_$myId');
+      _messagesChannel!.onPostgresChanges(
+        event: PostgresChangeEvent.all,
+        schema: 'public',
+        table: 'messages',
+        callback: (payload) {
+          final rec = payload.newRecord;
+          if (rec['receiver_id'] == myId || rec['sender_id'] == myId) {
+            ref.invalidate(recentChatsProvider);
+          }
+        },
+      ).subscribe();
+    }
+
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (mounted) {
+        ref.invalidate(recentChatsProvider);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    final supabase = SupabaseService.clientOrNull;
+    if (supabase != null && _messagesChannel != null) {
+      supabase.removeChannel(_messagesChannel!);
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -259,6 +300,11 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                       final createdAt = DateTime.parse(lastMessage['created_at'] as String);
                       final messageType = lastMessage['message_type'] as String? ?? 'text';
                       final status = partnerProfile?['status'] as String? ?? 'offline';
+                      final lastSeenRaw = partnerProfile?['last_seen'] as String?;
+                      final lastSeen = lastSeenRaw != null ? DateTime.tryParse(lastSeenRaw) : null;
+                      final isPartnerOnline = status == 'online' &&
+                          lastSeen != null &&
+                          DateTime.now().difference(lastSeen.toLocal()).inMinutes < 2;
 
                       String previewText = content;
                       if (messageType == 'image') {
@@ -281,7 +327,7 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                         message: previewText,
                         time: _formatTime(createdAt),
                         unread: unreadCount,
-                        online: status == 'online',
+                        online: isPartnerOnline,
                         onTap: () => context.push('/chat/$partnerId'),
                       );
                     },

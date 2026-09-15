@@ -47,10 +47,16 @@ class UserProfile {
   final DateTime? updatedAt;
   final int credits;
 
-  bool get isOnline => status == 'online';
+  bool get isOnline {
+    if (status != 'online') return false;
+    if (lastSeen == null) return false;
+    final now = DateTime.now();
+    final diff = now.difference(lastSeen!.toLocal());
+    return !diff.isNegative && diff.inMinutes < 2;
+  }
   bool get isAway => status == 'away';
   bool get isBusy => status == 'busy';
-  bool get isOffline => status == 'offline';
+  bool get isOffline => !isOnline;
 
   String get effectiveName {
     if (nickname != null && nickname!.trim().isNotEmpty) {

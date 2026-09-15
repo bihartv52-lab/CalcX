@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:calcx/app/app_router.dart';
 import 'package:calcx/app/app_theme.dart';
 import 'package:calcx/core/constants/app_routes.dart';
@@ -18,18 +19,28 @@ class CalcXApp extends ConsumerStatefulWidget {
 }
 
 class _CalcXAppState extends ConsumerState<CalcXApp> with WidgetsBindingObserver {
+  Timer? _heartbeatTimer;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Try setting status online on boot
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _startHeartbeat();
+    });
+  }
+
+  void _startHeartbeat() {
+    _updatePresence(true);
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 45), (_) {
       _updatePresence(true);
     });
   }
 
   @override
   void dispose() {
+    _heartbeatTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -37,8 +48,9 @@ class _CalcXAppState extends ConsumerState<CalcXApp> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _updatePresence(true);
+      _startHeartbeat();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _heartbeatTimer?.cancel();
       _updatePresence(false);
     }
   }

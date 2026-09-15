@@ -22,6 +22,7 @@ import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 import 'package:calcx/features/chat/presentation/widgets/interactive_message_text.dart';
 import 'package:calcx/features/chat/presentation/widgets/message_hover_copy_button.dart';
+import 'package:calcx/features/chat/presentation/widgets/chat_emoji_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -227,6 +228,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   static final Map<String, String> _chatDrafts = {};
 
   bool _isTextEmpty = true;
+  bool _showEmojiPicker = false;
   bool _isRecording = false;
   int _recordDuration = 0;
   Timer? _recordTimer;
@@ -244,6 +246,14 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     _audioRecorder = AudioRecorder();
     _loadOtherUser();
     _scrollController.addListener(_scrollListener);
+
+    _messageFocusNode.addListener(() {
+      if (_messageFocusNode.hasFocus && _showEmojiPicker) {
+        setState(() {
+          _showEmojiPicker = false;
+        });
+      }
+    });
     
     final draft = _chatDrafts[widget.otherUserId];
     if (draft != null && draft.isNotEmpty) {
@@ -361,19 +371,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
   void _sendTypingBroadcast(bool isTyping) {
     if (!mounted) return;
-    final myId = ref.read(chatRepositoryProvider).supabase?.auth.currentUser?.id;
-    if (myId == null) return;
-
-    final channel = ref.read(typingSendChannelProvider(widget.otherUserId));
-    if (channel != null) {
-      channel.sendBroadcastMessage(
-        event: 'typing',
-        payload: {
-          'senderId': myId,
-          'isTyping': isTyping,
-        },
-      );
-    }
+    ref.read(chatRepositoryProvider).sendDirectTyping(widget.otherUserId, isTyping);
   }
 
   void _onTextChanged(String val) {
@@ -651,14 +649,21 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
   Future<void> _sendOptimistic(Message msg) async {
     try {
       final repository = ref.read(chatRepositoryProvider);
-      await repository.sendMessage(
+      final sentMsg = await repository.sendMessage(
         receiverId: msg.receiverId,
         content: msg.content,
         replyTo: msg.replyTo,
       );
       if (mounted) {
         setState(() {
-          _optimisticMessages.removeWhere((m) => m.id == msg.id);
+          final idx = _optimisticMessages.indexWhere((m) => m.id == msg.id);
+          if (idx != -1) {
+            if (sentMsg != null) {
+              _optimisticMessages[idx] = sentMsg.copyWith(status: MessageStatus.delivered);
+            } else {
+              _optimisticMessages[idx] = _optimisticMessages[idx].copyWith(status: MessageStatus.delivered);
+            }
+          }
         });
       }
     } catch (e) {
@@ -719,6 +724,68 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
     // Fire in background asynchronously without blocking UI
     unawaited(_sendOptimistic(optimisticMsg));
+  }
+
+  void _insertEmoji(String emoji) {
+    final text = _messageController.text;
+    final selection = _messageController.selection;
+    final newText = (selection.start >= 0 && selection.end >= selection.start)
+        ? text.replaceRange(selection.start, selection.end, emoji)
+        : text + emoji;
+    final newOffset = (selection.start >= 0)
+        ? selection.start + emoji.length
+        : newText.length;
+    _messageController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newOffset),
+    );
+    if (_isTextEmpty) {
+      setState(() => _isTextEmpty = false);
+    }
+  }
+
+  void _backspaceEmoji() {
+    final text = _messageController.text;
+    final selection = _messageController.selection;
+    if (text.isEmpty) return;
+
+    if (selection.start > 0 && selection.start == selection.end) {
+      final sub = text.substring(0, selection.start);
+      final charList = sub.characters.toList();
+      if (charList.isNotEmpty) {
+        charList.removeLast();
+        final prefix = charList.join();
+        final suffix = text.substring(selection.end);
+        _messageController.value = TextEditingValue(
+          text: prefix + suffix,
+          selection: TextSelection.collapsed(offset: prefix.length),
+        );
+      }
+    } else if (selection.start >= 0 && selection.end > selection.start) {
+      final newText = text.replaceRange(selection.start, selection.end, '');
+      _messageController.value = TextEditingValue(
+        text: newText,
+        selection: TextSelection.collapsed(offset: selection.start),
+      );
+    } else if (text.isNotEmpty) {
+      final charList = text.characters.toList();
+      charList.removeLast();
+      _messageController.text = charList.join();
+    }
+    final isEmpty = _messageController.text.trim().isEmpty;
+    if (isEmpty != _isTextEmpty) {
+      setState(() => _isTextEmpty = isEmpty);
+    }
+  }
+
+  void _toggleEmojiPicker() {
+    if (_showEmojiPicker) {
+      setState(() => _showEmojiPicker = false);
+      _messageFocusNode.requestFocus();
+    } else {
+      FocusScope.of(context).unfocus();
+      setState(() => _showEmojiPicker = true);
+    }
   }
 
   void _showMessageMenu(Message message) {
@@ -1931,6 +1998,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                 child: SelectionArea(
                   child: messagesAsync.when(
                     data: (dbMessages) {
+                      final dbIds = dbMessages.map((m) => m.id).toSet();
+                      _optimisticMessages.removeWhere((opt) => dbIds.contains(opt.id));
                       _allMessages = [..._optimisticMessages, ...dbMessages];
                       final filteredMessages = _searchQuery.isEmpty
                           ? _allMessages
@@ -2168,95 +2237,129 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                 ),
                               ],
                             )
-                          : Row(
+                          : Column(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Attachment picker
-                                IconButton(
-                                  icon: Icon(Icons.add_circle_outline_rounded, size: 24, color: isLight ? Colors.black87 : Colors.white),
-                                  onPressed: _showMediaPicker,
-                                  padding: EdgeInsets.zero,
-                                  constraints: const BoxConstraints(),
-                                ),
-                                const SizedBox(width: 10),
-                                
-                                // Pill Container
-                                Expanded(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: isLight ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
-                                      borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(
-                                        color: isLight ? const Color(0xFFDBDBDB) : const Color(0xFF363636),
-                                        width: 0.5,
+                                Row(
+                                  children: [
+                                    // Attachment picker
+                                    IconButton(
+                                      icon: Icon(Icons.add_circle_outline_rounded, size: 24, color: isLight ? Colors.black87 : Colors.white),
+                                      onPressed: _showMediaPicker,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    
+                                    // Pill Container
+                                    Expanded(
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          color: isLight ? const Color(0xFFF1F1F4) : const Color(0xFF1C1C1E),
+                                          borderRadius: BorderRadius.circular(20),
+                                          border: Border.all(
+                                            color: isLight ? const Color(0xFFDBDBDB) : const Color(0xFF363636),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                        child: Row(
+                                          children: [
+                                            Expanded(
+                                              child: Row(
+                                                children: [
+                                                  IconButton(
+                                                    icon: Icon(
+                                                      _showEmojiPicker
+                                                          ? Icons.keyboard_outlined
+                                                          : Icons.sentiment_satisfied_alt_outlined,
+                                                      size: 20,
+                                                      color: _showEmojiPicker
+                                                          ? (isLight ? const Color(0xFF0095F6) : const Color(0xFF3797F0))
+                                                          : (isLight ? Colors.black54 : Colors.white70),
+                                                    ),
+                                                    onPressed: _toggleEmojiPicker,
+                                                    padding: EdgeInsets.zero,
+                                                    constraints: const BoxConstraints(),
+                                                    splashRadius: 18,
+                                                    tooltip: _showEmojiPicker ? 'Keyboard' : 'Emojis',
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: Focus(
+                                                      onKeyEvent: (node, event) {
+                                                        if (event is KeyDownEvent &&
+                                                            event.logicalKey == LogicalKeyboardKey.enter &&
+                                                            !HardwareKeyboard.instance.isShiftPressed) {
+                                                          if (_messageController.text.trim().isNotEmpty) {
+                                                            _sendMessage();
+                                                          }
+                                                          _messageFocusNode.requestFocus();
+                                                          return KeyEventResult.handled;
+                                                        }
+                                                        return KeyEventResult.ignored;
+                                                      },
+                                                      child: TextField(
+                                                        autofocus: true,
+                                                        focusNode: _messageFocusNode,
+                                                        controller: _messageController,
+                                                        style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
+                                                        decoration: InputDecoration(
+                                                          hintText: 'Message...',
+                                                          hintStyle: TextStyle(color: isLight ? Colors.black38 : Colors.grey),
+                                                          border: InputBorder.none,
+                                                          focusedBorder: InputBorder.none,
+                                                          enabledBorder: InputBorder.none,
+                                                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                                                          filled: false,
+                                                        ),
+                                                        maxLines: 5,
+                                                        minLines: 1,
+                                                        textCapitalization: TextCapitalization.sentences,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Focus(
-                                            onKeyEvent: (node, event) {
-                                              if (event is KeyDownEvent &&
-                                                  event.logicalKey == LogicalKeyboardKey.enter &&
-                                                  !HardwareKeyboard.instance.isShiftPressed) {
-                                                if (_messageController.text.trim().isNotEmpty) {
-                                                  _sendMessage();
-                                                }
-                                                _messageFocusNode.requestFocus();
-                                                return KeyEventResult.handled;
-                                              }
-                                              return KeyEventResult.ignored;
-                                            },
-                                            child: TextField(
-                                              autofocus: true,
-                                              focusNode: _messageFocusNode,
-                                              controller: _messageController,
-                                              style: TextStyle(fontSize: 14, color: isLight ? Colors.black87 : Colors.white),
-                                              decoration: InputDecoration(
-                                                hintText: 'Message...',
-                                                hintStyle: TextStyle(color: isLight ? Colors.black38 : Colors.grey),
-                                                border: InputBorder.none,
-                                                focusedBorder: InputBorder.none,
-                                                enabledBorder: InputBorder.none,
-                                                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                                                filled: false,
+                                    const SizedBox(width: 8),
+                                    
+                                    // Dynamic Microphone or Send Button
+                                    AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 150),
+                                      child: _isTextEmpty
+                                          ? IconButton(
+                                              key: const ValueKey('mic_btn'),
+                                              icon: Icon(Icons.mic_none_outlined, size: 24, color: isLight ? Colors.black87 : Colors.white),
+                                              onPressed: _startRecording,
+                                              padding: EdgeInsets.zero,
+                                              constraints: const BoxConstraints(),
+                                            )
+                                          : TextButton(
+                                              key: const ValueKey('send_btn'),
+                                              onPressed: _sendMessage,
+                                              child: Text(
+                                                'Send',
+                                                style: TextStyle(
+                                                  color: isLight ? const Color(0xFF0095F6) : const Color(0xFF3797F0),
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 15,
+                                                ),
                                               ),
-                                              maxLines: 5,
-                                              minLines: 1,
-                                              textCapitalization: TextCapitalization.sentences,
                                             ),
-                                          ),
-                                        ),
-                                      ],
                                     ),
+                                  ],
+                                ),
+                                if (_showEmojiPicker)
+                                  ChatEmojiPicker(
+                                    onEmojiSelected: _insertEmoji,
+                                    onBackspace: _backspaceEmoji,
+                                    isLight: isLight,
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                
-                                // Dynamic Microphone or Send Button
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 150),
-                                  child: _isTextEmpty
-                                      ? IconButton(
-                                          key: const ValueKey('mic_btn'),
-                                          icon: Icon(Icons.mic_none_outlined, size: 24, color: isLight ? Colors.black87 : Colors.white),
-                                          onPressed: _startRecording,
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                        )
-                                      : TextButton(
-                                          key: const ValueKey('send_btn'),
-                                          onPressed: _sendMessage,
-                                          child: Text(
-                                            'Send',
-                                            style: TextStyle(
-                                              color: isLight ? const Color(0xFF0095F6) : const Color(0xFF3797F0),
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 15,
-                                            ),
-                                          ),
-                                        ),
-                                ),
                               ],
                             ),
                     ),

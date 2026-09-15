@@ -15,11 +15,13 @@ final typingStatesProvider = NotifierProvider<TypingStatesNotifier, Map<String, 
 );
 
 class TypingStatesNotifier extends Notifier<Map<String, bool>> {
+  static TypingStatesNotifier? instance;
   RealtimeChannel? _myBroadcastChannel;
   final Map<String, Timer> _expiryTimers = {};
 
   @override
   Map<String, bool> build() {
+    instance = this;
     final supabase = SupabaseService.clientOrNull;
     if (supabase == null) return {};
 
@@ -41,6 +43,9 @@ class TypingStatesNotifier extends Notifier<Map<String, bool>> {
     _myBroadcastChannel!.subscribe();
 
     ref.onDispose(() {
+      if (instance == this) {
+        instance = null;
+      }
       if (_myBroadcastChannel != null) {
         supabase.removeChannel(_myBroadcastChannel!);
       }
@@ -50,6 +55,10 @@ class TypingStatesNotifier extends Notifier<Map<String, bool>> {
     });
 
     return {};
+  }
+
+  void updateTyping(String senderId, bool isTyping) {
+    _updateTypingState(senderId, isTyping);
   }
 
   void _updateTypingState(String senderId, bool isTyping) {
@@ -177,6 +186,84 @@ class ChatRepository {
   final SupabaseClient? _supabase;
   SupabaseClient? get supabase => _supabase;
 
+  // Track active controllers and caches by otherUserId to allow instantaneous 0ms message injection
+  static final Map<String, StreamController<List<Message>>> _activeDirectControllers = {};
+  static final Map<String, List<Message>> _activeDirectCaches = {};
+  static final Map<String, RealtimeChannel> _activeDirectChannels = {};
+  static final Map<String, Timer> _activeDirectPollTimers = {};
+
+  static String getConversationChannelName(String id1, String id2) {
+    final sorted = [id1, id2]..sort();
+    return 'chat_dm_${sorted[0]}_${sorted[1]}';
+  }
+
+  static void _injectDirectMessage(String partnerId, Message msg) {
+    final controller = _activeDirectControllers[partnerId];
+    if (controller != null && !controller.isClosed) {
+      final currentList = _activeDirectCaches[partnerId] ?? [];
+      if (!currentList.any((m) => m.id == msg.id)) {
+        final updatedList = [msg, ...currentList];
+        _activeDirectCaches[partnerId] = updatedList;
+        controller.add(updatedList);
+      }
+    }
+  }
+
+  Future<void> _broadcastDirectMessage(String myId, String receiverId, Map<String, dynamic> insertedMsg) async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+    try {
+      final channelName = getConversationChannelName(myId, receiverId);
+      var channel = _activeDirectChannels[receiverId];
+      if (channel == null) {
+        channel = supabase.channel(channelName);
+        _activeDirectChannels[receiverId] = channel;
+        channel.subscribe();
+      }
+      channel.sendBroadcastMessage(
+        event: 'new_message',
+        payload: {'message': insertedMsg},
+      );
+    } catch (e) {
+      debugPrint('Error broadcasting direct message: $e');
+    }
+  }
+
+  Future<void> sendDirectTyping(String otherUserId, bool isTyping) async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      final channelName = getConversationChannelName(myId, otherUserId);
+      var channel = _activeDirectChannels[otherUserId];
+      if (channel == null) {
+        channel = supabase.channel(channelName);
+        _activeDirectChannels[otherUserId] = channel;
+        channel.subscribe();
+      }
+      channel.sendBroadcastMessage(
+        event: 'typing',
+        payload: {
+          'senderId': myId,
+          'isTyping': isTyping,
+        },
+      );
+
+      final targetChannel = supabase.channel('typing_broadcast_$otherUserId');
+      targetChannel.sendBroadcastMessage(
+        event: 'typing',
+        payload: {
+          'senderId': myId,
+          'isTyping': isTyping,
+        },
+      );
+    } catch (e) {
+      debugPrint('Error sending direct typing broadcast: $e');
+    }
+  }
+
   Stream<List<Message>> watchDirectMessages(String otherUserId, {int limit = 100}) {
     final supabase = _supabase;
     if (supabase == null) return const Stream.empty();
@@ -184,9 +271,14 @@ class ChatRepository {
     final myId = supabase.auth.currentUser?.id;
     if (myId == null) return const Stream.empty();
 
-    final controller = StreamController<List<Message>>();
+    _activeDirectPollTimers[otherUserId]?.cancel();
+    _activeDirectControllers[otherUserId]?.close();
 
-    void fetchMessages() async {
+    final controller = StreamController<List<Message>>.broadcast();
+    _activeDirectControllers[otherUserId] = controller;
+    _activeDirectCaches[otherUserId] = [];
+
+    Future<void> fetchMessages({bool silent = false}) async {
       try {
         final response = await supabase
             .from('messages')
@@ -197,17 +289,57 @@ class ChatRepository {
             .limit(limit);
         if (controller.isClosed) return;
         final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
-        controller.add(list);
+        
+        final existingCache = _activeDirectCaches[otherUserId] ?? [];
+        final fetchedIds = list.map((m) => m.id).toSet();
+        final unmerged = existingCache.where((m) => !fetchedIds.contains(m.id)).toList();
+        final combined = [...unmerged, ...list];
+        combined.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        _activeDirectCaches[otherUserId] = combined;
+        controller.add(combined);
       } catch (e) {
-        debugPrint('Error fetching direct messages: $e');
+        if (!silent) debugPrint('Error fetching direct messages: $e');
       }
     }
 
     // Initial fetch
     fetchMessages();
 
-    // Setup channel for realtime changes
-    final channel = supabase.channel('dm_${myId}_$otherUserId');
+    // Canonical conversation channel for both Postgres CDC & Instant Peer-to-Peer Broadcast
+    final channelName = getConversationChannelName(myId, otherUserId);
+    final channel = supabase.channel(channelName);
+    _activeDirectChannels[otherUserId] = channel;
+
+    // 1. Instant peer-to-peer message broadcast (<50ms latency)
+    channel.onBroadcast(
+      event: 'new_message',
+      callback: (payload) {
+        try {
+          final msgMap = payload['message'] as Map<String, dynamic>?;
+          if (msgMap != null) {
+            final msg = Message.fromMap(msgMap);
+            _injectDirectMessage(otherUserId, msg);
+          }
+        } catch (e) {
+          debugPrint('Error handling broadcast new_message: $e');
+        }
+      },
+    );
+
+    // 2. Typing indicator broadcast
+    channel.onBroadcast(
+      event: 'typing',
+      callback: (payload) {
+        final senderId = payload['senderId'] as String?;
+        final isTyping = payload['isTyping'] as bool? ?? false;
+        if (senderId != null) {
+          TypingStatesNotifier.instance?.updateTyping(senderId, isTyping);
+        }
+      },
+    );
+
+    // 3. Postgres changes
     channel.onPostgresChanges(
       event: PostgresChangeEvent.all,
       schema: 'public',
@@ -222,23 +354,38 @@ class ChatRepository {
         
         if (roomId == null && 
             ((sId == myId && rId == otherUserId) || (sId == otherUserId && rId == myId))) {
-          fetchMessages();
+          fetchMessages(silent: true);
         }
       },
     ).onPostgresChanges(
       event: PostgresChangeEvent.all,
       schema: 'public',
       table: 'message_reactions',
-      callback: (payload) => fetchMessages(),
+      callback: (payload) => fetchMessages(silent: true),
     ).onPostgresChanges(
       event: PostgresChangeEvent.all,
       schema: 'public',
       table: 'message_reads',
-      callback: (payload) => fetchMessages(),
+      callback: (payload) => fetchMessages(silent: true),
     ).subscribe();
 
+    // 4. Background heartbeat poll (every 4 seconds) as safety fallback
+    final pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!controller.isClosed) {
+        fetchMessages(silent: true);
+      }
+    });
+    _activeDirectPollTimers[otherUserId] = pollTimer;
+
     controller.onCancel = () {
-      supabase.removeChannel(channel);
+      pollTimer.cancel();
+      _activeDirectPollTimers.remove(otherUserId);
+      _activeDirectControllers.remove(otherUserId);
+      _activeDirectCaches.remove(otherUserId);
+      final ch = _activeDirectChannels.remove(otherUserId);
+      if (ch != null) {
+        supabase.removeChannel(ch);
+      }
     };
 
     return controller.stream;
@@ -302,7 +449,7 @@ class ChatRepository {
     return controller.stream;
   }
 
-  Future<void> sendMessage({
+  Future<Message?> sendMessage({
     String? receiverId,
     required String content,
     String? roomId,
@@ -311,10 +458,10 @@ class ChatRepository {
     String? mediaUrl,
   }) async {
     final supabase = _supabase;
-    if (supabase == null) return;
+    if (supabase == null) return null;
 
     final myId = supabase.auth.currentUser?.id;
-    if (myId == null) return;
+    if (myId == null) return null;
 
     final response = await supabase.from('messages').insert({
       'sender_id': myId,
@@ -328,18 +475,28 @@ class ChatRepository {
     }).select();
 
     final insertedMsg = response.firstOrNull;
+    if (insertedMsg == null) return null;
 
-    // Dispatch notification in background (non-blocking)
-    if (insertedMsg != null) {
-      _dispatchMessageNotification(
-        supabase: supabase,
-        myId: myId,
-        receiverId: receiverId,
-        roomId: roomId,
-        insertedMsg: insertedMsg,
-        content: content,
-      );
+    final messageObj = Message.fromMap(insertedMsg);
+
+    // 1. Instantly inject into local cache & stream controller (0ms UI latency)
+    if (receiverId != null) {
+      _injectDirectMessage(receiverId, messageObj);
+      // 2. Broadcast immediately over websocket to recipient (<50ms delivery)
+      _broadcastDirectMessage(myId, receiverId, insertedMsg);
     }
+
+    // 3. Dispatch notification in background (non-blocking)
+    _dispatchMessageNotification(
+      supabase: supabase,
+      myId: myId,
+      receiverId: receiverId,
+      roomId: roomId,
+      insertedMsg: insertedMsg,
+      content: content,
+    );
+
+    return messageObj;
   }
 
   void _dispatchMessageNotification({
@@ -400,7 +557,7 @@ class ChatRepository {
     }());
   }
 
-  Future<void> sendMediaMessage({
+  Future<Message?> sendMediaMessage({
     String? receiverId,
     required String messageType,
     required String mediaUrl,
@@ -409,10 +566,10 @@ class ChatRepository {
     String? roomId,
   }) async {
     final supabase = _supabase;
-    if (supabase == null) return;
+    if (supabase == null) return null;
 
     final myId = supabase.auth.currentUser?.id;
-    if (myId == null) return;
+    if (myId == null) return null;
 
     final response = await supabase.from('messages').insert({
       'sender_id': myId,
@@ -426,26 +583,36 @@ class ChatRepository {
     }).select();
 
     final insertedMsg = response.firstOrNull;
+    if (insertedMsg == null) return null;
 
-    // Dispatch notification in background (non-blocking)
-    if (insertedMsg != null) {
-      final notificationBody = messageType == 'image'
-          ? 'Sent an image'
-          : messageType == 'video'
-              ? 'Sent a video'
-              : messageType == 'audio' || messageType == 'voice'
-                  ? 'Sent a voice message'
-                  : 'Sent an attachment';
+    final messageObj = Message.fromMap(insertedMsg);
 
-      _dispatchMessageNotification(
-        supabase: supabase,
-        myId: myId,
-        receiverId: receiverId,
-        roomId: roomId,
-        insertedMsg: insertedMsg,
-        content: notificationBody,
-      );
+    // 1. Instantly inject into local cache & stream controller (0ms UI latency)
+    if (receiverId != null) {
+      _injectDirectMessage(receiverId, messageObj);
+      // 2. Broadcast immediately over websocket to recipient (<50ms delivery)
+      _broadcastDirectMessage(myId, receiverId, insertedMsg);
     }
+
+    // 3. Dispatch notification in background (non-blocking)
+    final notificationBody = messageType == 'image'
+        ? 'Sent an image'
+        : messageType == 'video'
+            ? 'Sent a video'
+            : messageType == 'audio' || messageType == 'voice'
+                ? 'Sent a voice message'
+                : 'Sent an attachment';
+
+    _dispatchMessageNotification(
+      supabase: supabase,
+      myId: myId,
+      receiverId: receiverId,
+      roomId: roomId,
+      insertedMsg: insertedMsg,
+      content: notificationBody,
+    );
+
+    return messageObj;
   }
 
   Future<void> editMessage(String messageId, String newContent) async {
