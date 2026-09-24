@@ -378,6 +378,43 @@ class ChatRepository {
       },
     );
 
+    // 2b. Instant read receipt broadcast (turns ticks blue in <10ms)
+    channel.onBroadcast(
+      event: 'messages_read',
+      callback: (payload) {
+        try {
+          final readerId = payload['readerId'] as String?;
+          final readAtStr = payload['readAt'] as String?;
+          final rawMsgIds = payload['messageIds'] as List?;
+          final msgIds = rawMsgIds?.map((e) => e.toString()).toSet() ?? {};
+          if (readerId != null && readerId == otherUserId) {
+            final cache = _activeDirectCaches[otherUserId];
+            if (cache != null && cache.isNotEmpty) {
+              final readAt = readAtStr != null ? DateTime.tryParse(readAtStr) : null;
+              var changed = false;
+              final updated = cache.map((msg) {
+                if (msg.senderId == myId) {
+                  final isTarget = msgIds.contains(msg.id) ||
+                      (readAt != null && !msg.createdAt.isAfter(readAt));
+                  if (isTarget && !msg.readUserIds.contains(readerId)) {
+                    changed = true;
+                    return msg.copyWith(readUserIds: [...msg.readUserIds, readerId]);
+                  }
+                }
+                return msg;
+              }).toList();
+              if (changed) {
+                _activeDirectCaches[otherUserId] = updated;
+                controller.add(updated);
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('Error handling broadcast messages_read: $e');
+        }
+      },
+    );
+
     // 3. Postgres changes
     channel.onPostgresChanges(
       event: PostgresChangeEvent.all,
@@ -749,10 +786,11 @@ class ChatRepository {
 
       if (unreadMsgIds.isEmpty) return;
 
+      final nowIso = DateTime.now().toIso8601String();
       final inserts = unreadMsgIds.map((msgId) => {
         'message_id': msgId,
         'user_id': myId,
-        'read_at': DateTime.now().toIso8601String(),
+        'read_at': nowIso,
       }).toList();
 
       await supabase.from('message_reads').upsert(inserts);
@@ -765,6 +803,23 @@ class ChatRepository {
             .eq('user_id', myId)
             .eq('type', 'message');
       } catch (_) {}
+
+      // Broadcast read receipt event across conversation channel (<10ms UI update)
+      try {
+        final channelName = getConversationChannelName(myId, partnerId);
+        final ch = _activeDirectChannels[partnerId] ?? supabase.channel(channelName);
+        await ch.sendBroadcastMessage(
+          event: 'messages_read',
+          payload: {
+            'readerId': myId,
+            'partnerId': partnerId,
+            'readAt': nowIso,
+            'messageIds': unreadMsgIds,
+          },
+        );
+      } catch (broadcastErr) {
+        debugPrint('Error broadcasting messages_read: $broadcastErr');
+      }
     } catch (e) {
       debugPrint('Error marking all messages as read: $e');
     }

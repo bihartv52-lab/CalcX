@@ -267,23 +267,42 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     });
 
     final client = SupabaseService.clientOrNull;
+    final myId = client?.auth.currentUser?.id;
     if (client != null) {
-      _readsSubscription = client
-          .channel('dm_reads_${widget.otherUserId}')
-          .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'message_reads',
-            callback: (payload) {
-              final record = payload.newRecord;
-              final oldRecord = payload.oldRecord;
-              final userId = record['user_id'] ?? oldRecord['user_id'];
-              if (userId == widget.otherUserId) {
-                _fetchLastReadCursor();
-              }
-            },
-          );
-      _readsSubscription!.subscribe();
+      if (myId != null) {
+        final convChannelName = ChatRepository.getConversationChannelName(myId, widget.otherUserId);
+        _readsSubscription = client
+            .channel('reads_$convChannelName')
+            .onBroadcast(
+              event: 'messages_read',
+              callback: (payload) {
+                final readerId = payload['readerId'] as String?;
+                final readAtStr = payload['readAt'] as String?;
+                if (readerId == widget.otherUserId && readAtStr != null) {
+                  final readAt = DateTime.tryParse(readAtStr);
+                  if (readAt != null && mounted) {
+                    setState(() {
+                      _otherUserLastReadAt = readAt;
+                    });
+                  }
+                }
+              },
+            )
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'message_reads',
+              callback: (payload) {
+                final record = payload.newRecord;
+                final oldRecord = payload.oldRecord;
+                final userId = record['user_id'] ?? oldRecord['user_id'];
+                if (userId == widget.otherUserId) {
+                  _fetchLastReadCursor();
+                }
+              },
+            );
+        _readsSubscription!.subscribe();
+      }
       _fetchLastReadCursor();
     }
 
@@ -418,17 +437,16 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     try {
       final response = await client
           .from('message_reads')
-          .select('read_at, messages!inner(sender_id, receiver_id)')
+          .select('read_at')
           .eq('user_id', widget.otherUserId)
-          .eq('messages.sender_id', client.auth.currentUser!.id)
           .order('read_at', ascending: false)
           .limit(1)
           .maybeSingle();
 
       if (response != null && response['read_at'] != null) {
         final readAtStr = response['read_at'] as String;
-        final readAt = DateTime.parse(readAtStr);
-        if (mounted) {
+        final readAt = DateTime.tryParse(readAtStr);
+        if (readAt != null && mounted) {
           setState(() {
             _otherUserLastReadAt = readAt;
           });
@@ -2119,6 +2137,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                                 isGrouped: isGrouped,
                                 isFirstInGroup: isFirstInGroup,
                                 isLastInGroup: isLastInGroup,
+                                otherUserId: widget.otherUserId,
                                 otherUserLastReadAt: _otherUserLastReadAt,
                                 searchQuery: _searchQuery,
                                 isHighlighted: _highlightedMessageId == message.id,
@@ -2743,6 +2762,7 @@ class _MessageBubble extends ConsumerWidget {
     required this.isGrouped,
     required this.isFirstInGroup,
     required this.isLastInGroup,
+    this.otherUserId,
     this.otherUserLastReadAt,
     this.searchQuery,
     required this.isHighlighted,
@@ -2760,6 +2780,7 @@ class _MessageBubble extends ConsumerWidget {
   final bool isGrouped;
   final bool isFirstInGroup;
   final bool isLastInGroup;
+  final String? otherUserId;
   final DateTime? otherUserLastReadAt;
   final String? searchQuery;
   final bool isHighlighted;
@@ -3051,9 +3072,10 @@ class _MessageBubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final chatPartnerId = message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
-    final isRead = (otherUserLastReadAt != null && message.createdAt.isBefore(otherUserLastReadAt!)) ||
-        message.readUserIds.contains(chatPartnerId);
+    final chatPartnerId = otherUserId ?? message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
+    final isRead = (otherUserLastReadAt != null && !message.createdAt.isAfter(otherUserLastReadAt!)) ||
+        (chatPartnerId.isNotEmpty && message.readUserIds.contains(chatPartnerId)) ||
+        (message.roomId == null && message.readUserIds.any((id) => id != message.senderId));
     final isLight = Theme.of(context).brightness == Brightness.light;
 
     if (message.messageType == 'call') {
@@ -3307,11 +3329,11 @@ class _MessageBubble extends ConsumerWidget {
                   const Icon(Icons.error_outline_rounded, size: 10, color: Colors.redAccent)
                 else
                   Icon(
-                    isRead ? Icons.done_all_rounded : Icons.done_all_rounded,
-                    size: 11,
+                    Icons.done_all_rounded,
+                    size: 13,
                     color: isRead 
-                        ? (isLight ? const Color(0xFF34B7F1) : const Color(0xFF3797F0))
-                        : Colors.grey,
+                        ? (isLight ? const Color(0xFF34B7F1) : const Color(0xFF3897F0))
+                        : (isMe ? Colors.white54 : Colors.grey),
                   ),
               ],
             ],

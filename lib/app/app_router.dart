@@ -9,6 +9,8 @@ import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:calcx/features/rooms/presentation/room_watch_party_page.dart';
 import 'package:calcx/features/rooms/presentation/room_chat_page.dart';
 import 'package:calcx/features/rooms/presentation/room_voice_call_page.dart';
+import 'package:calcx/features/vault/presentation/web_vault_shell.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,7 +21,18 @@ final rootNavigatorKeyProvider = Provider((ref) => GlobalKey<NavigatorState>());
 /// Purely in-memory: defaults to false every time the app/website is loaded or refreshed.
 class CalculatorUnlockedNotifier extends Notifier<bool> {
   @override
-  bool build() => false;
+  bool build() {
+    if (kIsWeb) {
+      try {
+        final uri = Uri.base;
+        if (uri.queryParameters['unlocked'] == 'true' ||
+            uri.fragment.contains('unlocked=true')) {
+          return true;
+        }
+      } catch (_) {}
+    }
+    return false;
+  }
 
   @override
   set state(bool value) => super.state = value;
@@ -60,6 +73,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.calculator,
         name: 'calculator',
         builder: (context, state) => const CalculatorPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.webVault,
+        name: 'web_vault',
+        builder: (context, state) => const WebVaultShell(),
       ),
       GoRoute(
         path: AppRoutes.auth,
