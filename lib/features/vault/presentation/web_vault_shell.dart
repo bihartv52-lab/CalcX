@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
@@ -16,38 +17,79 @@ import 'package:share_plus/share_plus.dart';
 class WebVaultShell extends ConsumerStatefulWidget {
   const WebVaultShell({super.key});
 
-  static const String webAppUrl = 'https://calcx-web.vercel.app/?unlocked=true';
+  static const String liveAppUrl = 'https://calcx-web.vercel.app/?unlocked=true';
+  static const String offlineAppUrl = 'http://localhost:8080/?unlocked=true';
 
   @override
   ConsumerState<WebVaultShell> createState() => _WebVaultShellState();
 }
 
 class _WebVaultShellState extends ConsumerState<WebVaultShell> {
+  final InAppLocalhostServer _localhostServer = InAppLocalhostServer(
+    documentRoot: 'assets/web',
+    port: 8080,
+  );
+
   InAppWebViewController? _webViewController;
-  double _loadProgress = 0;
-  bool _isLoading = true;
-  bool _hasError = false;
-  String _errorMessage = '';
+  String _targetUrl = WebVaultShell.offlineAppUrl;
+  bool _isServerReady = false;
 
   @override
   void initState() {
     super.initState();
-    _requestInitialPermissions();
+    _initApp();
   }
 
-  Future<void> _requestInitialPermissions() async {
+  @override
+  void dispose() {
+    try {
+      _localhostServer.close();
+    } catch (_) {}
+    super.dispose();
+  }
+
+  Future<void> _initApp() async {
+    // 1. Start the embedded local server serving pre-bundled offline website
+    try {
+      await _localhostServer.start();
+    } catch (e) {
+      debugPrint('Localhost server notice: $e');
+    }
+
+    // 2. Request native notification permissions politely on first entry
     if (!kIsWeb) {
       try {
         await Permission.notification.request();
       } catch (_) {}
     }
+
+    // 3. Resolve target URL: test if live Vercel web app is reachable
+    final resolvedUrl = await _resolveInitialUrl();
+    if (mounted) {
+      setState(() {
+        _targetUrl = resolvedUrl;
+        _isServerReady = true;
+      });
+    }
+  }
+
+  Future<String> _resolveInitialUrl() async {
+    try {
+      final lookup = await InternetAddress.lookup('calcx-web.vercel.app')
+          .timeout(const Duration(milliseconds: 1500));
+      if (lookup.isNotEmpty && lookup[0].rawAddress.isNotEmpty) {
+        return WebVaultShell.liveAppUrl;
+      }
+    } catch (_) {}
+    // Offline or unreachable -> Use pre-bundled local website
+    return WebVaultShell.offlineAppUrl;
   }
 
   Future<void> _handleFileDownload(DownloadStartRequest request) async {
     try {
       final url = request.url.toString();
       final filename = request.suggestedFilename ??
-          'calcx_download_';
+          'calcx_download_${DateTime.now().millisecondsSinceEpoch}';
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -55,20 +97,22 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
           content: Row(
             children: [
               const SizedBox(
-                width: 16,
-                height: 16,
+                width: 14,
+                height: 14,
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
               ),
               const SizedBox(width: 12),
-              Expanded(child: Text('Downloading ...')),
+              Expanded(child: Text('Downloading $filename...')),
             ],
           ),
-          duration: const Duration(seconds: 3),
+          duration: const Duration(seconds: 2),
         ),
       );
 
       if (Platform.isAndroid) {
-        await Permission.storage.request();
+        try {
+          await Permission.storage.request();
+        } catch (_) {}
       }
 
       final uri = Uri.parse(url);
@@ -88,16 +132,16 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
         }
 
         if (targetDir != null) {
-          final filePath = '/';
+          final filePath = '${targetDir.path}/$filename';
           final file = File(filePath);
           await file.writeAsBytes(response.bodyBytes);
 
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Saved to Downloads: '),
+              content: Text('Saved to Downloads: $filename'),
               backgroundColor: const Color(0xFF10B981),
-              duration: const Duration(seconds: 5),
+              duration: const Duration(seconds: 4),
               action: SnackBarAction(
                 label: 'Share',
                 textColor: Colors.white,
@@ -110,14 +154,7 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
         }
       }
     } catch (e) {
-      debugPrint('Error handling download: ');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Download failed: '),
-          backgroundColor: Colors.redAccent,
-        ),
-      );
+      debugPrint('Error handling download: $e');
     }
   }
 
@@ -129,6 +166,18 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_isServerReady) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF00E5FF),
+            strokeWidth: 2,
+          ),
+        ),
+      );
+    }
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -144,11 +193,32 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
         body: SafeArea(
           child: Stack(
             children: [
-              // Main WebView
+              // Main WebView with stealth native configuration
               InAppWebView(
                 initialUrlRequest: URLRequest(
-                  url: WebUri(WebVaultShell.webAppUrl),
+                  url: WebUri(_targetUrl),
                 ),
+                initialUserScripts: UnmodifiableListView<UserScript>([
+                  UserScript(
+                    source: '''
+                      (function() {
+                        var style = document.createElement('style');
+                        style.innerHTML = `
+                          * { -webkit-tap-highlight-color: transparent !important; -webkit-touch-callout: none !important; }
+                          ::-webkit-scrollbar { display: none !important; width: 0px !important; height: 0px !important; }
+                        `;
+                        if (document.head) {
+                          document.head.appendChild(style);
+                        } else {
+                          document.addEventListener('DOMContentLoaded', function() {
+                            document.head.appendChild(style);
+                          });
+                        }
+                      })();
+                    ''',
+                    injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
+                  ),
+                ]),
                 initialSettings: InAppWebViewSettings(
                   javaScriptEnabled: true,
                   mediaPlaybackRequiresUserGesture: false,
@@ -157,39 +227,38 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                   allowFileAccessFromFileURLs: true,
                   allowUniversalAccessFromFileURLs: true,
                   cacheEnabled: true,
+                  domStorageEnabled: true,
+                  databaseEnabled: true,
                   supportZoom: false,
                   transparentBackground: true,
+                  overScrollMode: OverScrollMode.NEVER,
+                  disableContextMenu: true,
                   allowsBackForwardNavigationGestures: true,
                   mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
                 ),
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
                 },
-                onLoadStart: (controller, url) {
-                  setState(() {
-                    _isLoading = true;
-                    _hasError = false;
-                  });
-                },
-                onProgressChanged: (controller, progress) {
-                  setState(() {
-                    _loadProgress = progress / 100.0;
-                    if (progress >= 100) {
-                      _isLoading = false;
-                    }
-                  });
-                },
-                onLoadStop: (controller, url) {
-                  setState(() {
-                    _isLoading = false;
-                  });
-                },
+                // Silent fallback on any network error: seamlessly redirect to pre-bundled local website
                 onReceivedError: (controller, request, error) {
-                  setState(() {
-                    _isLoading = false;
-                    _hasError = true;
-                    _errorMessage = error.description;
-                  });
+                  final url = request.url;
+                  if (url.host != 'localhost') {
+                    controller.loadUrl(
+                      urlRequest: URLRequest(
+                        url: WebUri(WebVaultShell.offlineAppUrl),
+                      ),
+                    );
+                  }
+                },
+                onReceivedHttpError: (controller, request, errorResponse) {
+                  final url = request.url;
+                  if (url.host != 'localhost') {
+                    controller.loadUrl(
+                      urlRequest: URLRequest(
+                        url: WebUri(WebVaultShell.offlineAppUrl),
+                      ),
+                    );
+                  }
                 },
                 onPermissionRequest: (controller, request) async {
                   final resources = request.resources;
@@ -218,102 +287,6 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                   _handleFileDownload(downloadRequest);
                 },
               ),
-
-              // Linear Progress Indicator
-              if (_isLoading && _loadProgress < 1.0)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: LinearProgressIndicator(
-                    value: _loadProgress > 0 ? _loadProgress : null,
-                    backgroundColor: Colors.transparent,
-                    valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF00E5FF)),
-                    minHeight: 2.5,
-                  ),
-                ),
-
-              // Offline / Error Overlay
-              if (_hasError)
-                Container(
-                  color: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 28),
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.06),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.wifi_off_rounded,
-                            size: 40,
-                            color: Colors.white70,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Offline Mode',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _errorMessage.isNotEmpty
-                              ? 'Unable to connect: '
-                              : 'Please check your internet connection to access the online vault.',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Colors.white60,
-                          ),
-                        ),
-                        const SizedBox(height: 28),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.white70,
-                                side: const BorderSide(color: Colors.white24),
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              onPressed: _panicLock,
-                              icon: const Icon(Icons.calculate_outlined, size: 18),
-                              label: const Text('Calculator'),
-                            ),
-                            const SizedBox(width: 14),
-                            FilledButton.icon(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: const Color(0xFF00E5FF),
-                                foregroundColor: Colors.black,
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  _hasError = false;
-                                  _isLoading = true;
-                                });
-                                _webViewController?.reload();
-                              },
-                              icon: const Icon(Icons.refresh_rounded, size: 18),
-                              label: const Text('Retry', style: TextStyle(fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
 
               // Floating Quick Panic Calculator Lock Button
               Positioned(

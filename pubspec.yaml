@@ -55,6 +55,32 @@ flutter:
     - assets/images/
     - assets/audio/
     - assets/app.env
+    - assets/web/
+    - assets/web/assets/
+    - assets/web/assets/assets/
+    - assets/web/assets/assets/audio/
+    - assets/web/assets/assets/images/
+    - assets/web/assets/fonts/
+    - assets/web/assets/packages/
+    - assets/web/assets/packages/cupertino_icons/
+    - assets/web/assets/packages/cupertino_icons/assets/
+    - assets/web/assets/packages/flutter_inappwebview/
+    - assets/web/assets/packages/flutter_inappwebview/assets/
+    - assets/web/assets/packages/flutter_inappwebview/assets/t_rex_runner/
+    - assets/web/assets/packages/flutter_inappwebview_web/
+    - assets/web/assets/packages/flutter_inappwebview_web/assets/
+    - assets/web/assets/packages/flutter_inappwebview_web/assets/web/
+    - assets/web/assets/packages/record_web/
+    - assets/web/assets/packages/record_web/assets/
+    - assets/web/assets/packages/record_web/assets/js/
+    - assets/web/assets/packages/wakelock_plus/
+    - assets/web/assets/packages/wakelock_plus/assets/
+    - assets/web/assets/packages/youtube_player_flutter/
+    - assets/web/assets/packages/youtube_player_flutter/assets/
+    - assets/web/assets/shaders/
+    - assets/web/canvaskit/
+    - assets/web/canvaskit/chromium/
+    - assets/web/icons/
 
 flutter_launcher_icons:
   android: true
