@@ -65,6 +65,25 @@ class MediaRepository {
     }
   }
 
+  Future<XFile?> pickAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['m4a', 'aac', 'mp3', 'wav', 'ogg', 'opus', 'weba', 'flac'],
+      allowMultiple: false,
+    );
+    final platformFile = result?.files.firstOrNull;
+    if (platformFile == null) return null;
+
+    if (kIsWeb) {
+      final bytes = platformFile.bytes;
+      if (bytes == null) return null;
+      return XFile.fromData(bytes, name: platformFile.name);
+    } else {
+      final path = platformFile.path;
+      return path == null ? null : XFile(path);
+    }
+  }
+
   Future<Uint8List?> generateImageThumbnail(Uint8List bytes) async {
     try {
       final image = img.decodeImage(bytes);
@@ -197,11 +216,23 @@ class MediaRepository {
   }
 
   String _mimeTypeFor(String fileType, String extension) {
-    return switch (fileType) {
-      'image' => 'image/${extension == 'jpg' ? 'jpeg' : extension}',
-      'video' => 'video/$extension',
-      'audio' => 'audio/$extension',
-      _ => 'application/octet-stream',
-    };
+    if (fileType == 'image') {
+      return 'image/${extension == 'jpg' ? 'jpeg' : extension}';
+    } else if (fileType == 'video') {
+      return 'video/$extension';
+    } else if (fileType == 'audio') {
+      return switch (extension) {
+        'm4a' || 'mp4' => 'audio/mp4',
+        'mp3' => 'audio/mpeg',
+        'aac' => 'audio/aac',
+        'wav' => 'audio/wav',
+        'ogg' => 'audio/ogg',
+        'opus' => 'audio/opus',
+        'weba' || 'webm' => 'audio/webm',
+        'flac' => 'audio/flac',
+        _ => 'audio/$extension',
+      };
+    }
+    return 'application/octet-stream';
   }
 }

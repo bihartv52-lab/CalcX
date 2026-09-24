@@ -93,7 +93,32 @@ class Message {
       messageType == 'image' ||
       messageType == 'video' ||
       messageType == 'audio' ||
-      messageType == 'voice';
+      messageType == 'voice' ||
+      isEphemeral;
+
+  bool get isEphemeral =>
+      messageType == 'view_once_photo' ||
+      messageType == 'view_twice_photo' ||
+      messageType == 'view_once_video' ||
+      messageType == 'view_twice_video';
+
+  bool get isViewOnce =>
+      messageType == 'view_once_photo' || messageType == 'view_once_video';
+
+  bool get isViewTwice =>
+      messageType == 'view_twice_photo' || messageType == 'view_twice_video';
+
+  bool get isEphemeralPhoto =>
+      messageType == 'view_once_photo' || messageType == 'view_twice_photo';
+
+  bool get isEphemeralVideo =>
+      messageType == 'view_once_video' || messageType == 'view_twice_video';
+
+  int get maxAllowedViews {
+    if (isViewOnce) return 1;
+    if (isViewTwice) return 2;
+    return 999999;
+  }
 
   Message copyWith({
     String? id,

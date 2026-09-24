@@ -65,6 +65,15 @@ Future<String> getTempDirectoryPath() async {
   return '';
 }
 
+Future<String> saveVoiceRecordingLocally(Uint8List bytes, String fileName) async {
+  final base64String = base64Encode(bytes);
+  return 'data:audio/mp4;base64,$base64String';
+}
+
+Future<List<Map<String, dynamic>>> getLocalVoiceRecordings() async {
+  return [];
+}
+
 void toggleBrowserFullscreen(bool enter) {
   try {
     if (enter) {

@@ -89,4 +89,39 @@ Future<String> getTempDirectoryPath() async {
   return tempDir.path;
 }
 
+Future<String> saveVoiceRecordingLocally(Uint8List bytes, String fileName) async {
+  final appDir = await getApplicationDocumentsDirectory();
+  final voiceDir = Directory('${appDir.path}/voice_recordings');
+  if (!await voiceDir.exists()) {
+    await voiceDir.create(recursive: true);
+  }
+  final newFile = File('${voiceDir.path}/$fileName');
+  await newFile.writeAsBytes(bytes);
+  return newFile.path;
+}
+
+Future<List<Map<String, dynamic>>> getLocalVoiceRecordings() async {
+  try {
+    final appDir = await getApplicationDocumentsDirectory();
+    final voiceDir = Directory('${appDir.path}/voice_recordings');
+    if (!await voiceDir.exists()) {
+      return [];
+    }
+    final files = voiceDir.listSync().whereType<File>().toList();
+    files.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    return files.map((f) {
+      final stat = f.statSync();
+      final name = f.path.split(Platform.pathSeparator).last;
+      return {
+        'name': name,
+        'path': f.path,
+        'size': stat.size,
+        'modified': stat.modified,
+      };
+    }).toList();
+  } catch (_) {
+    return [];
+  }
+}
+
 void toggleBrowserFullscreen(bool enter) {}

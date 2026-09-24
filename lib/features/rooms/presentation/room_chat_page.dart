@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:calcx/app/app_theme.dart';
 import 'package:calcx/core/models/message.dart';
 import 'package:calcx/core/services/theme_service.dart';
@@ -397,6 +398,40 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
     }
   }
 
+  Future<void> _sendVoiceRecording() async {
+    try {
+      final mediaRepo = ref.read(mediaRepositoryProvider);
+      final file = await mediaRepo.pickAudio();
+      if (file == null) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Uploading voice recording...'), duration: Duration(seconds: 4)),
+      );
+
+      final uploadResult = await mediaRepo.uploadMedia(
+        file: file,
+        fileType: 'audio',
+      );
+
+      final repository = ref.read(chatRepositoryProvider);
+      await repository.sendMediaMessage(
+        receiverId: null,
+        messageType: 'voice',
+        mediaUrl: uploadResult['url']!,
+        mediaThumbnail: uploadResult['thumbnail'],
+        content: file.name,
+        roomId: widget.roomId,
+      );
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send voice recording. Please try again.')),
+        );
+      }
+    }
+  }
+
   void _showMediaOptions() {
     showModalBottomSheet(
       context: context,
@@ -421,6 +456,15 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
               onTap: () {
                 Navigator.pop(context);
                 _sendVideo();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.mic_none_rounded, color: Color(0xFF3897F0)),
+              title: const Text('Send Voice Recording / Audio'),
+              subtitle: const Text('Pick locally stored voice recording or audio'),
+              onTap: () {
+                Navigator.pop(context);
+                _sendVoiceRecording();
               },
             ),
             ListTile(
@@ -763,13 +807,52 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
                                             padding: const EdgeInsets.only(bottom: 4.0),
                                             child: ClipRRect(
                                               borderRadius: BorderRadius.circular(8),
-                                              child: Image.network(
-                                                message.mediaUrl ?? '',
+                                              child: CachedNetworkImage(
+                                                imageUrl: message.mediaUrl ?? '',
                                                 fit: BoxFit.cover,
                                                 height: 140,
                                                 width: 180,
-                                                errorBuilder: (c, e, s) => const Icon(Icons.broken_image_rounded),
+                                                progressIndicatorBuilder: (context, url, downloadProgress) {
+                                                  final percent = downloadProgress.progress != null
+                                                      ? (downloadProgress.progress! * 100).toInt()
+                                                      : null;
+                                                  return Container(
+                                                    height: 140,
+                                                    width: 180,
+                                                    color: Colors.black.withOpacity(0.12),
+                                                    child: Center(
+                                                      child: Row(
+                                                        mainAxisSize: MainAxisSize.min,
+                                                        children: [
+                                                          SizedBox(
+                                                            width: 14,
+                                                            height: 14,
+                                                            child: CircularProgressIndicator(
+                                                              value: downloadProgress.progress,
+                                                              strokeWidth: 2,
+                                                              color: const Color(0xFF3897F0),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(width: 6),
+                                                          Text(
+                                                            percent != null ? 'Downloading %' : 'Downloading...',
+                                                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                errorWidget: (c, e, s) => const Icon(Icons.broken_image_rounded),
                                               ),
+                                            ),
+                                          )
+                                        else if ((message.messageType == 'voice' || message.messageType == 'audio') && message.mediaUrl != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(bottom: 4.0),
+                                            child: AudioBubblePlayer(
+                                              audioUrl: message.mediaUrl!,
+                                              durationText: message.content,
                                             ),
                                           )
                                         else if (message.messageType == 'video')

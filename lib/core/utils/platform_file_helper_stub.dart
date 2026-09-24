@@ -30,4 +30,12 @@ Future<String> getTempDirectoryPath() {
   throw UnsupportedError('Cannot get temp directory on this platform.');
 }
 
+Future<String> saveVoiceRecordingLocally(Uint8List bytes, String fileName) {
+  throw UnsupportedError('Cannot save voice recording on this platform.');
+}
+
+Future<List<Map<String, dynamic>>> getLocalVoiceRecordings() {
+  throw UnsupportedError('Cannot list voice recordings on this platform.');
+}
+
 void toggleBrowserFullscreen(bool enter) {}

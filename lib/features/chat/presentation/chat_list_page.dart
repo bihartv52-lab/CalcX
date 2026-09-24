@@ -317,6 +317,14 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                         previewText = '🎤 Voice message';
                       } else if (messageType == 'file') {
                         previewText = '📎 File';
+                      } else if (messageType == 'view_once_photo') {
+                        previewText = '① View Once Photo';
+                      } else if (messageType == 'view_twice_photo') {
+                        previewText = '② View Twice Photo';
+                      } else if (messageType == 'view_once_video') {
+                        previewText = '① View Once Video';
+                      } else if (messageType == 'view_twice_video') {
+                        previewText = '② View Twice Video';
                       }
 
                       return _ChatPreview(

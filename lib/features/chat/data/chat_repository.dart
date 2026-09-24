@@ -715,6 +715,24 @@ class ChatRepository {
         .eq('id', messageId);
   }
 
+  Future<void> expireViewOnceMessage(String messageId) async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+
+    try {
+      await supabase
+          .from('messages')
+          .update({
+            'content': 'Opened',
+            'media_url': null,
+            'media_thumbnail': null,
+          })
+          .eq('id', messageId);
+    } catch (e) {
+      debugPrint('Error expiring view-once message: $e');
+    }
+  }
+
   Future<void> setTyping({
     required String chatWithUserId,
     required bool isTyping,
