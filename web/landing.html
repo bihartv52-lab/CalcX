@@ -723,7 +723,7 @@
       <a href="#arcade">Arcade</a>
     </div>
     <button class="panic-btn" id="navPanic"><i data-lucide="zap"></i>PANIC</button>
-    <a class="btn btn-solid" data-dl href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk" style="padding:10px 14px;font-size:11px"><span>Get the APK</span></a>
+    <a class="btn btn-solid" data-dl href="/CalcX.apk" style="padding:10px 14px;font-size:11px"><span>Get the APK</span></a>
   </div>
 </nav>
 
@@ -739,10 +739,10 @@
       <h1 data-reveal style="--d:.07s">Looks like math.<br><em>Isn&rsquo;t.</em></h1>
       <p class="hero-sub" data-reveal style="--d:.14s">CalcX is a genuine calculator — decimals, percentages, a real history tape. But type your passcode formula (<code>1234=</code>) and the keypad dissolves into an encrypted hub: direct messages, HD video calls, synced movie nights, multiplayer arcade. One tap of panic, and it&rsquo;s math again in under 50&nbsp;ms.</p>
       <div class="cta-row" data-reveal style="--d:.21s">
-        <a class="btn-key" data-dl data-pct href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk"><i data-lucide="arrow-down"></i> <span class="dl-txt">Download APK — v1.0.1</span></a>
+        <a class="btn-key" data-dl data-pct href="/CalcX.apk"><i data-lucide="arrow-down"></i> <span class="dl-txt">Download APK — v1.0.1</span></a>
         <a class="btn-ghost" href="https://calcx-web.vercel.app/" target="_blank" rel="noopener">Open the web app <i data-lucide="arrow-up-right"></i></a>
       </div>
-      <p class="hero-meta" data-reveal style="--d:.28s">Android APK · 111.5 MB<b>·</b>HD video calls<b>·</b>real-time sync<b>·</b>panic &lt; 50 ms</p>
+      <p class="hero-meta" data-reveal style="--d:.28s">Android APK · 74.8 MB<b>·</b>HD video calls<b>·</b>real-time sync<b>·</b>panic &lt; 50 ms</p>
     </div>
 
     <div class="hero-demo" data-reveal style="--d:.18s">
@@ -1294,7 +1294,7 @@
       </div>
 
       <div class="dl-row" data-reveal style="--d:.08s">
-        <a class="btn-key" id="dlMain" data-dl data-pct href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk"><i data-lucide="arrow-down"></i><span class="dl-txt">Download CalcX.apk — 111.5 MB</span></a>
+        <a class="btn-key" id="dlMain" data-dl data-pct href="/CalcX.apk"><i data-lucide="arrow-down"></i><span class="dl-txt">Download CalcX.apk — 74.8 MB</span></a>
         <p class="dl-meta">v1.0.1 · Direct APK download<br>Android APK · HD video calls + real-time sync</p>
       </div>
       <div class="dl-bar" id="dlBar"><i id="dlFill"></i></div>
@@ -1305,7 +1305,7 @@
       <p class="spec-h" style="margin-top:8px">Fine print, published</p>
       <dl>
         <div class="spec-row"><dt>Version</dt><span class="leader"></span><dd>1.0.1 (stable)</dd></div>
-        <div class="spec-row"><dt>Size</dt><span class="leader"></span><dd>111.5 MB · APK</dd></div>
+        <div class="spec-row"><dt>Size</dt><span class="leader"></span><dd>74.8 MB · APK</dd></div>
         <div class="spec-row"><dt>Platform</dt><span class="leader"></span><dd>Android</dd></div><div class="spec-row"><dt>Distribution</dt><span class="leader"></span><dd>Direct APK download</dd></div>
         <div class="spec-row"><dt>Realtime</dt><span class="leader"></span><dd>HD video calls · real-time sync</dd></div>
         <div class="spec-row"><dt>Web app</dt><span class="leader"></span><dd><a class="spec-a" href="https://calcx-web.vercel.app/" target="_blank" rel="noopener">calcx-web.vercel.app</a></dd></div>
@@ -1359,7 +1359,7 @@
       </div>
       <div class="f-links">
         <a href="https://calcx-web.vercel.app/" target="_blank" rel="noopener">Web version <i data-lucide="arrow-up-right"></i></a>
-        <a data-dl href="https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk">Download the APK · v1.0.1 <i data-lucide="arrow-down"></i></a>
+        <a data-dl href="/CalcX.apk">Download the APK · v1.0.1 <i data-lucide="arrow-down"></i></a>
         <a href="#stealth">How the disguise works <i data-lucide="arrow-up-right"></i></a>
       </div>
       <div class="f-credit">
@@ -1399,7 +1399,8 @@
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const APK_URL = 'https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk';
+const GITHUB_APK_URL = 'https://github.com/bihartv52-lab/CalcX/releases/download/v1.0.1/CalcX.apk';
+const APK_URL = '/CalcX.apk';
 const APK_NAME = 'CalcX.apk';
 
 /* ================= TOASTS ================= */
@@ -1454,7 +1455,7 @@ async function startApk(btn){
 
   if (bar) bar.classList.add('show');
   if (fill) fill.style.width = '0%';
-  toast('Download started — CalcX v1.0.1 (111.5 MB)', 'arrow-down');
+  toast('Download started — CalcX v1.0.1 (74.8 MB)', 'arrow-down');
 
   const setPct = p => {
     if (showPct && label) label.textContent = 'Downloading… ' + Math.floor(p) + '%';
@@ -1505,7 +1506,7 @@ async function startApk(btn){
     finish('CalcX.apk saved — check your downloads', 'check');
   } catch (err) {
     /* CORS or streaming unsupported → silent iframe fallback, still zero navigation */
-    iframeDownload(APK_URL);
+    iframeDownload(GITHUB_APK_URL);
     finish('Download running in your browser\u2019s download manager', 'arrow-down');
   }
 }
