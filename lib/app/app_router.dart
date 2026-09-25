@@ -67,7 +67,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        redirect: (_, __) => AppRoutes.calculator,
+        redirect: (_, _) => AppRoutes.calculator,
       ),
       GoRoute(
         path: AppRoutes.calculator,
@@ -77,7 +77,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.webVault,
         name: 'web_vault',
-        builder: (context, state) => const WebVaultShell(),
+        builder: (context, state) {
+          final target = state.uri.queryParameters['route'];
+          return WebVaultShell(initialRoute: target);
+        },
       ),
       GoRoute(
         path: AppRoutes.auth,

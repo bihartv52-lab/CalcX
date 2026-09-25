@@ -11,7 +11,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 class CalculatorPage extends ConsumerWidget {
   const CalculatorPage({super.key});
@@ -19,132 +18,25 @@ class CalculatorPage extends ConsumerWidget {
   void _handleUnlock(BuildContext context, WidgetRef ref) {
     ref.read(calculatorUnlockedProvider.notifier).state = true;
     final targetRoute = NotificationService.pendingNotificationRoute;
-    if (targetRoute != null && targetRoute.isNotEmpty) {
-      NotificationService.pendingNotificationRoute = null;
-      context.go(targetRoute);
+    NotificationService.pendingNotificationRoute = null;
+
+    if (kIsWeb) {
+      final user = SupabaseService.clientOrNull?.auth.currentUser;
+      if (targetRoute != null && targetRoute.isNotEmpty) {
+        context.go(targetRoute);
+      } else if (user != null) {
+        context.go(AppRoutes.home);
+      } else {
+        context.go(AppRoutes.auth);
+      }
     } else {
-      if (kIsWeb) {
-        final user = SupabaseService.clientOrNull?.auth.currentUser;
-        if (user != null) {
-          context.go(AppRoutes.home);
-        } else {
-          context.go(AppRoutes.auth);
-        }
+      if (targetRoute != null && targetRoute.isNotEmpty) {
+        context.go('${AppRoutes.webVault}?route=${Uri.encodeComponent(targetRoute)}');
       } else {
         context.go(AppRoutes.webVault);
       }
     }
   }
-
-  void _showHistorySheet(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF141414),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return Consumer(
-          builder: (context, ref, _) {
-            final state = ref.watch(calculatorControllerProvider);
-            final controller = ref.read(calculatorControllerProvider.notifier);
-
-            return SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Calculation History',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        if (state.history.isNotEmpty)
-                          TextButton(
-                            onPressed: () {
-                              controller.clearHistory();
-                              Navigator.pop(ctx);
-                            },
-                            child: const Text('Clear', style: TextStyle(color: Colors.redAccent)),
-                          ),
-                      ],
-                    ),
-                    const Divider(color: Colors.white12),
-                    if (state.history.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 36),
-                        child: Text(
-                          'No calculations yet',
-                          style: TextStyle(color: Colors.white54),
-                        ),
-                      )
-                    else
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxHeight: MediaQuery.sizeOf(context).height * 0.45,
-                        ),
-                        child: ListView.separated(
-                          shrinkWrap: true,
-                          itemCount: state.history.length,
-                          separatorBuilder: (_, __) => const Divider(color: Colors.white10, height: 1),
-                          itemBuilder: (context, idx) {
-                            final item = state.history[idx];
-                            return ListTile(
-                              contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                              title: Text(
-                                item.expression,
-                                style: const TextStyle(color: Colors.white70, fontSize: 15),
-                              ),
-                              subtitle: Text(
-                                DateFormat('HH:mm:ss').format(item.timestamp),
-                                style: const TextStyle(color: Colors.white38, fontSize: 11),
-                              ),
-                              trailing: Text(
-                                '= ',
-                                style: const TextStyle(
-                                  color: Color(0xFF00E5FF),
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              onTap: () {
-                                controller.loadHistoryItem(item);
-                                Navigator.pop(ctx);
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  static const _scientificKeys = [
-    'sin',
-    'cos',
-    'tan',
-    'ln',
-    'log',
-    '√',
-    '^',
-    '!',
-    'π',
-    'e',
-    'x²',
-  ];
 
   static const _keys = [
     'AC',
@@ -183,11 +75,11 @@ class CalculatorPage extends ConsumerWidget {
         builder: (context, constraints) {
           final compact = constraints.maxHeight < 680;
           final keypadSpacing = compact ? 8.0 : 10.0;
-          final keypadAspectRatio = compact ? 1.45 : 1.16;
+          final keypadAspectRatio = compact ? 1.45 : 1.18;
 
           return Center(
             child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(vertical: compact ? 6 : 14),
+              padding: EdgeInsets.symmetric(vertical: compact ? 8 : 16),
               child: ConstrainedBox(
                 constraints: BoxConstraints(maxWidth: isWide ? 440 : 520),
                 child: Padding(
@@ -205,43 +97,7 @@ class CalculatorPage extends ConsumerWidget {
                                   color: colors.primary,
                                 ),
                           ),
-                          const SizedBox(width: 14),
-                          // DEG / RAD Toggle
-                          InkWell(
-                            onTap: () {
-                              HapticFeedback.selectionClick();
-                              controller.toggleRadMode();
-                            },
-                            borderRadius: BorderRadius.circular(12),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: state.isRadMode
-                                    ? colors.primary.withValues(alpha: 0.2)
-                                    : Colors.white10,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: state.isRadMode ? colors.primary : Colors.white24,
-                                  width: 1,
-                                ),
-                              ),
-                              child: Text(
-                                state.isRadMode ? 'RAD' : 'DEG',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                  color: state.isRadMode ? colors.primary : Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ),
                           const Spacer(),
-                          // History Button
-                          IconButton(
-                            tooltip: 'Calculation History',
-                            onPressed: () => _showHistorySheet(context, ref),
-                            icon: const Icon(Icons.history_rounded, color: Colors.white70),
-                          ),
                           if (biometricEnabled)
                             IconButton.filledTonal(
                               tooltip: 'Biometric unlock',
@@ -261,7 +117,7 @@ class CalculatorPage extends ConsumerWidget {
                         ],
                       ),
 
-                      SizedBox(height: compact ? 18 : 36),
+                      SizedBox(height: compact ? 24 : 48),
 
                       // Expression Display
                       Align(
@@ -275,33 +131,11 @@ class CalculatorPage extends ConsumerWidget {
                             maxLines: 1,
                             textAlign: TextAlign.right,
                             style: TextStyle(
-                              fontSize: compact ? 36 : 46,
+                              fontSize: compact ? 40 : 52,
                               fontWeight: FontWeight.w300,
                               color: Colors.white,
                               letterSpacing: 0,
                             ),
-                          ),
-                        ),
-                      ),
-
-                      // Preview Result Display
-                      SizedBox(
-                        height: 32,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 150),
-                            child: state.previewResult.isNotEmpty
-                                ? Text(
-                                    '= ',
-                                    key: ValueKey(state.previewResult),
-                                    style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w400,
-                                      color: Color(0xFF00E5FF),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
                           ),
                         ),
                       ),
@@ -323,7 +157,7 @@ class CalculatorPage extends ConsumerWidget {
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
                                 child: Text(
-                                  'Set your stealth passcode as a calculation and press =',
+                                  'Set your passcode as a calculation and press =',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: colors.primary.withValues(alpha: 0.8),
@@ -336,24 +170,7 @@ class CalculatorPage extends ConsumerWidget {
                         ),
                       ),
 
-                      // Scientific Row (Horizontal Scroll)
-                      SizedBox(
-                        height: 42,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _scientificKeys.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (context, index) {
-                            final key = _scientificKeys[index];
-                            return _ScientificKeyChip(
-                              label: key,
-                              onTap: () => controller.press(key),
-                            );
-                          },
-                        ),
-                      ),
-
-                      SizedBox(height: compact ? 10 : 16),
+                      SizedBox(height: compact ? 12 : 20),
 
                       // Main 4x5 Keypad
                       GridView.builder(
@@ -412,44 +229,6 @@ class CalculatorPage extends ConsumerWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-class _ScientificKeyChip extends StatelessWidget {
-  const _ScientificKeyChip({
-    required this.label,
-    required this.onTap,
-  });
-
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white12, width: 0.5),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF00E5FF),
-          ),
-        ),
       ),
     );
   }

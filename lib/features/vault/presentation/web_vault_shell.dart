@@ -1,8 +1,12 @@
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
+import 'package:calcx/core/services/notification_service.dart';
+import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,10 +19,20 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
 
 class WebVaultShell extends ConsumerStatefulWidget {
-  const WebVaultShell({super.key});
+  const WebVaultShell({super.key, this.initialRoute});
 
-  static const String liveAppUrl = 'https://calcx-web.vercel.app/?unlocked=true';
-  static const String offlineAppUrl = 'http://localhost:8080/?unlocked=true';
+  final String? initialRoute;
+
+  static const String liveBaseUrl = 'https://calcx-web.vercel.app/';
+  static const String offlineBaseUrl = 'http://localhost:8080/';
+
+  static String buildUrl(String base, String? route) {
+    if (route != null && route.isNotEmpty) {
+      final cleanRoute = route.startsWith('/') ? route : '/$route';
+      return '$base#$cleanRoute?unlocked=true';
+    }
+    return '$base?unlocked=true';
+  }
 
   @override
   ConsumerState<WebVaultShell> createState() => _WebVaultShellState();
@@ -31,7 +45,7 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
   );
 
   InAppWebViewController? _webViewController;
-  String _targetUrl = WebVaultShell.offlineAppUrl;
+  String _targetUrl = WebVaultShell.buildUrl(WebVaultShell.offlineBaseUrl, null);
   bool _isServerReady = false;
 
   @override
@@ -63,7 +77,25 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
       } catch (_) {}
     }
 
-    // 3. Resolve target URL: test if live Vercel web app is reachable
+    // 3. Listen for notifications while web vault is active
+    if (!kIsWeb) {
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+        final senderId = message.data['sender_id'] as String?;
+        final roomId = message.data['room_id'] as String?;
+        String? targetRoute;
+        if (senderId != null && senderId.isNotEmpty) {
+          targetRoute = '/chat/$senderId';
+        } else if (roomId != null && roomId.isNotEmpty) {
+          targetRoute = '/room/$roomId/chat';
+        }
+        if (targetRoute != null && _webViewController != null) {
+          final targetUrl = WebVaultShell.buildUrl(WebVaultShell.liveBaseUrl, targetRoute);
+          _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl)));
+        }
+      });
+    }
+
+    // 4. Resolve target URL: test if live Vercel web app is reachable
     final resolvedUrl = await _resolveInitialUrl();
     if (mounted) {
       setState(() {
@@ -78,11 +110,11 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
       final lookup = await InternetAddress.lookup('calcx-web.vercel.app')
           .timeout(const Duration(milliseconds: 1500));
       if (lookup.isNotEmpty && lookup[0].rawAddress.isNotEmpty) {
-        return WebVaultShell.liveAppUrl;
+        return WebVaultShell.buildUrl(WebVaultShell.liveBaseUrl, widget.initialRoute);
       }
     } catch (_) {}
     // Offline or unreachable -> Use pre-bundled local website
-    return WebVaultShell.offlineAppUrl;
+    return WebVaultShell.buildUrl(WebVaultShell.offlineBaseUrl, widget.initialRoute);
   }
 
   Future<void> _handleFileDownload(DownloadStartRequest request) async {
@@ -214,6 +246,36 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                             document.head.appendChild(style);
                           });
                         }
+
+                        // Bridge: Observe Supabase auth tokens in localStorage and forward to native Flutter
+                        function checkAndSyncAuth() {
+                          try {
+                            for (var i = 0; i < localStorage.length; i++) {
+                              var key = localStorage.key(i);
+                              if (key && (key.indexOf('auth-token') !== -1 || key.indexOf('sb-') !== -1)) {
+                                var val = localStorage.getItem(key);
+                                if (val && val.length > 20) {
+                                  try {
+                                    var parsed = JSON.parse(val);
+                                    var u = parsed.user || (parsed.currentSession && parsed.currentSession.user);
+                                    if (u && u.id && window.flutter_inappwebview) {
+                                      window.flutter_inappwebview.callHandler('syncAuthSession', val);
+                                      return;
+                                    }
+                                  } catch(e) {}
+                                }
+                              }
+                            }
+                          } catch(e) {}
+                        }
+
+                        if (document.readyState === 'complete') {
+                          checkAndSyncAuth();
+                        } else {
+                          window.addEventListener('load', checkAndSyncAuth);
+                        }
+                        window.addEventListener('storage', checkAndSyncAuth);
+                        setInterval(checkAndSyncAuth, 4000);
                       })();
                     ''',
                     injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -238,6 +300,48 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                 ),
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
+
+                  // Register JavaScript handler to sync auth session and FCM token to native
+                  controller.addJavaScriptHandler(
+                    handlerName: 'syncAuthSession',
+                    callback: (args) async {
+                      if (args.isEmpty || args[0] == null) return;
+                      try {
+                        final raw = args[0];
+                        String? userId;
+                        String? rawJson;
+                        if (raw is Map) {
+                          userId = raw['user_id'] as String? ??
+                              (raw['user'] is Map ? raw['user']['id'] as String? : null);
+                          rawJson = jsonEncode(raw);
+                        } else if (raw is String) {
+                          rawJson = raw;
+                          try {
+                            final decoded = jsonDecode(raw);
+                            if (decoded is Map) {
+                              userId = decoded['user_id'] as String? ??
+                                  (decoded['user'] is Map ? decoded['user']['id'] as String? : null);
+                            }
+                          } catch (_) {}
+                        }
+
+                        final client = SupabaseService.clientOrNull;
+                        if (client != null) {
+                          if (rawJson != null) {
+                            try {
+                              await client.auth.recoverSession(rawJson);
+                            } catch (_) {}
+                          }
+                          final finalUserId = userId ?? client.auth.currentUser?.id;
+                          if (finalUserId != null) {
+                            await NotificationService.syncToken(null, finalUserId);
+                          }
+                        }
+                      } catch (e) {
+                        debugPrint('Error in syncAuthSession handler: $e');
+                      }
+                    },
+                  );
                 },
                 // Silent fallback on any network error: seamlessly redirect to pre-bundled local website
                 onReceivedError: (controller, request, error) {
@@ -245,7 +349,7 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                   if (url.host != 'localhost') {
                     controller.loadUrl(
                       urlRequest: URLRequest(
-                        url: WebUri(WebVaultShell.offlineAppUrl),
+                        url: WebUri(WebVaultShell.offlineBaseUrl),
                       ),
                     );
                   }
@@ -255,7 +359,7 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                   if (url.host != 'localhost') {
                     controller.loadUrl(
                       urlRequest: URLRequest(
-                        url: WebUri(WebVaultShell.offlineAppUrl),
+                        url: WebUri(WebVaultShell.offlineBaseUrl),
                       ),
                     );
                   }
