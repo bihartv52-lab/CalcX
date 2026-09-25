@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
+import 'package:calcx/core/services/local_web_asset_server.dart';
 import 'package:calcx/core/services/notification_service.dart';
 import 'package:calcx/core/services/supabase_service.dart';
+import 'package:calcx/core/services/web_update_service.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -23,15 +26,14 @@ class WebVaultShell extends ConsumerStatefulWidget {
 
   final String? initialRoute;
 
-  static const String liveBaseUrl = 'https://calcx-web.vercel.app/';
-  static const String offlineBaseUrl = 'http://localhost:8080/';
+  static const String baseUrl = 'http://localhost:8080/';
 
-  static String buildUrl(String base, String? route) {
+  static String buildUrl(String? route) {
     if (route != null && route.isNotEmpty) {
       final cleanRoute = route.startsWith('/') ? route : '/$route';
-      return '$base#$cleanRoute?unlocked=true';
+      return '$baseUrl#$cleanRoute?unlocked=true';
     }
-    return '$base?unlocked=true';
+    return '$baseUrl?unlocked=true';
   }
 
   @override
@@ -39,45 +41,44 @@ class WebVaultShell extends ConsumerStatefulWidget {
 }
 
 class _WebVaultShellState extends ConsumerState<WebVaultShell> {
-  final InAppLocalhostServer _localhostServer = InAppLocalhostServer(
-    documentRoot: 'assets/web',
-    port: 8080,
-  );
-
+  final LocalWebAssetServer _localServer = LocalWebAssetServer(port: 8080);
   InAppWebViewController? _webViewController;
-  String _targetUrl = WebVaultShell.buildUrl(WebVaultShell.offlineBaseUrl, null);
+  late String _targetUrl;
   bool _isServerReady = false;
+  bool _isPageLoading = true;
 
   @override
   void initState() {
     super.initState();
+    _targetUrl = WebVaultShell.buildUrl(widget.initialRoute);
     _initApp();
   }
 
   @override
   void dispose() {
     try {
-      _localhostServer.close();
+      _localServer.close();
     } catch (_) {}
     super.dispose();
   }
 
   Future<void> _initApp() async {
-    // 1. Start the embedded local server serving pre-bundled offline website
-    try {
-      await _localhostServer.start();
-    } catch (e) {
-      debugPrint('Localhost server notice: $e');
+    // 1. Start local asset server serving pre-downloaded local bundle
+    await _localServer.start();
+    if (mounted) {
+      setState(() {
+        _isServerReady = true;
+      });
     }
 
-    // 2. Request native notification permissions politely on first entry
+    // 2. Request native notification permissions on Android 13+
     if (!kIsWeb) {
       try {
         await Permission.notification.request();
       } catch (_) {}
     }
 
-    // 3. Listen for notifications while web vault is active
+    // 3. Listen for push notifications while web vault is active
     if (!kIsWeb) {
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
         final senderId = message.data['sender_id'] as String?;
@@ -89,32 +90,55 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
           targetRoute = '/room/$roomId/chat';
         }
         if (targetRoute != null && _webViewController != null) {
-          final targetUrl = WebVaultShell.buildUrl(WebVaultShell.liveBaseUrl, targetRoute);
+          final targetUrl = WebVaultShell.buildUrl(targetRoute);
           _webViewController?.loadUrl(urlRequest: URLRequest(url: WebUri(targetUrl)));
         }
       });
     }
 
-    // 4. Resolve target URL: test if live Vercel web app is reachable
-    final resolvedUrl = await _resolveInitialUrl();
-    if (mounted) {
-      setState(() {
-        _targetUrl = resolvedUrl;
-        _isServerReady = true;
-      });
-    }
+    // 4. Silently check for website updates in the background (0ms impact on UI)
+    unawaited(WebUpdateService.syncUpdatesSilently());
   }
 
-  Future<String> _resolveInitialUrl() async {
-    try {
-      final lookup = await InternetAddress.lookup('calcx-web.vercel.app')
-          .timeout(const Duration(milliseconds: 1500));
-      if (lookup.isNotEmpty && lookup[0].rawAddress.isNotEmpty) {
-        return WebVaultShell.buildUrl(WebVaultShell.liveBaseUrl, widget.initialRoute);
+  String? _extractUserId(dynamic obj) {
+    if (obj == null) return null;
+    if (obj is String) {
+      try {
+        return _extractUserId(jsonDecode(obj));
+      } catch (_) {
+        return null;
       }
-    } catch (_) {}
-    // Offline or unreachable -> Use pre-bundled local website
-    return WebVaultShell.buildUrl(WebVaultShell.offlineBaseUrl, widget.initialRoute);
+    }
+    if (obj is Map) {
+      if (obj['user_id'] is String && (obj['user_id'] as String).isNotEmpty) {
+        return obj['user_id'] as String;
+      }
+      if (obj['id'] is String && obj['email'] != null && (obj['id'] as String).isNotEmpty) {
+        return obj['id'] as String;
+      }
+      if (obj['user'] is Map) {
+        final userMap = obj['user'] as Map;
+        if (userMap['id'] is String && (userMap['id'] as String).isNotEmpty) {
+          return userMap['id'] as String;
+        }
+      }
+      if (obj['currentSession'] is Map) {
+        final sessionMap = obj['currentSession'] as Map;
+        if (sessionMap['user'] is Map) {
+          final userMap = sessionMap['user'] as Map;
+          if (userMap['id'] is String && (userMap['id'] as String).isNotEmpty) {
+            return userMap['id'] as String;
+          }
+        }
+      }
+      for (final val in obj.values) {
+        if (val is Map) {
+          final id = _extractUserId(val);
+          if (id != null) return id;
+        }
+      }
+    }
+    return null;
   }
 
   Future<void> _handleFileDownload(DownloadStartRequest request) async {
@@ -200,11 +224,11 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
   Widget build(BuildContext context) {
     if (!_isServerReady) {
       return const Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: Color(0xFF0B0F19),
         body: Center(
           child: CircularProgressIndicator(
-            color: Color(0xFF00E5FF),
-            strokeWidth: 2,
+            color: Color(0xFF00FFCC),
+            strokeWidth: 2.5,
           ),
         ),
       );
@@ -221,11 +245,11 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
         }
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: const Color(0xFF0B0F19),
         body: SafeArea(
           child: Stack(
             children: [
-              // Main WebView with stealth native configuration
+              // Main WebView loading pre-downloaded local bundle
               InAppWebView(
                 initialUrlRequest: URLRequest(
                   url: WebUri(_targetUrl),
@@ -247,35 +271,55 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                           });
                         }
 
-                        // Bridge: Observe Supabase auth tokens in localStorage and forward to native Flutter
-                        function checkAndSyncAuth() {
-                          try {
-                            for (var i = 0; i < localStorage.length; i++) {
-                              var key = localStorage.key(i);
-                              if (key && (key.indexOf('auth-token') !== -1 || key.indexOf('sb-') !== -1)) {
-                                var val = localStorage.getItem(key);
-                                if (val && val.length > 20) {
-                                  try {
-                                    var parsed = JSON.parse(val);
-                                    var u = parsed.user || (parsed.currentSession && parsed.currentSession.user);
-                                    if (u && u.id && window.flutter_inappwebview) {
-                                      window.flutter_inappwebview.callHandler('syncAuthSession', val);
-                                      return;
-                                    }
-                                  } catch(e) {}
-                                }
-                              }
+                        // Robust Web ↔ Native Auth & FCM Bridge
+                        function getPlatformReady() {
+                          return new Promise(function(resolve) {
+                            if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+                              resolve();
+                            } else {
+                              window.addEventListener('flutterInAppWebViewPlatformReady', function() {
+                                resolve();
+                              }, { once: true });
+                              setTimeout(resolve, 800);
                             }
-                          } catch(e) {}
+                          });
                         }
 
+                        function checkAndSyncAuth() {
+                          getPlatformReady().then(function() {
+                            if (!window.flutter_inappwebview || !window.flutter_inappwebview.callHandler) return;
+                            try {
+                              for (var i = 0; i < localStorage.length; i++) {
+                                var key = localStorage.key(i);
+                                var val = localStorage.getItem(key);
+                                if (!val || val.length < 20) continue;
+                                
+                                var parsed = null;
+                                try {
+                                  parsed = JSON.parse(val);
+                                  if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+                                } catch(e) {}
+
+                                if (parsed && typeof parsed === 'object') {
+                                  var user = parsed.user || (parsed.currentSession && parsed.currentSession.user);
+                                  if (user && user.id) {
+                                    window.flutter_inappwebview.callHandler('syncAuthSession', val);
+                                    return;
+                                  }
+                                }
+                              }
+                            } catch(e) {}
+                          });
+                        }
+
+                        window.calcxSyncAuth = checkAndSyncAuth;
+                        window.addEventListener('storage', checkAndSyncAuth);
                         if (document.readyState === 'complete') {
                           checkAndSyncAuth();
                         } else {
                           window.addEventListener('load', checkAndSyncAuth);
                         }
-                        window.addEventListener('storage', checkAndSyncAuth);
-                        setInterval(checkAndSyncAuth, 4000);
+                        setInterval(checkAndSyncAuth, 3000);
                       })();
                     ''',
                     injectionTime: UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -292,7 +336,7 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                   domStorageEnabled: true,
                   databaseEnabled: true,
                   supportZoom: false,
-                  transparentBackground: true,
+                  transparentBackground: false,
                   overScrollMode: OverScrollMode.NEVER,
                   disableContextMenu: true,
                   allowsBackForwardNavigationGestures: true,
@@ -301,40 +345,27 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                 onWebViewCreated: (controller) {
                   _webViewController = controller;
 
-                  // Register JavaScript handler to sync auth session and FCM token to native
+                  // 1. Sync auth session and Android FCM token
                   controller.addJavaScriptHandler(
                     handlerName: 'syncAuthSession',
                     callback: (args) async {
                       if (args.isEmpty || args[0] == null) return;
                       try {
                         final raw = args[0];
-                        String? userId;
-                        String? rawJson;
-                        if (raw is Map) {
-                          userId = raw['user_id'] as String? ??
-                              (raw['user'] is Map ? raw['user']['id'] as String? : null);
-                          rawJson = jsonEncode(raw);
-                        } else if (raw is String) {
-                          rawJson = raw;
-                          try {
-                            final decoded = jsonDecode(raw);
-                            if (decoded is Map) {
-                              userId = decoded['user_id'] as String? ??
-                                  (decoded['user'] is Map ? decoded['user']['id'] as String? : null);
-                            }
-                          } catch (_) {}
-                        }
+                        final userId = _extractUserId(raw);
+                        final rawJson = raw is String ? raw : jsonEncode(raw);
 
                         final client = SupabaseService.clientOrNull;
                         if (client != null) {
-                          if (rawJson != null) {
+                          if (rawJson.isNotEmpty) {
                             try {
                               await client.auth.recoverSession(rawJson);
                             } catch (_) {}
                           }
                           final finalUserId = userId ?? client.auth.currentUser?.id;
-                          if (finalUserId != null) {
+                          if (finalUserId != null && finalUserId.isNotEmpty) {
                             await NotificationService.syncToken(null, finalUserId);
+                            debugPrint('Linked Web Auth Session and Synced FCM Token for User: $finalUserId');
                           }
                         }
                       } catch (e) {
@@ -342,26 +373,31 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                       }
                     },
                   );
+
+                  // 2. Allow web app to directly query the native FCM token
+                  controller.addJavaScriptHandler(
+                    handlerName: 'getFcmToken',
+                    callback: (args) async {
+                      try {
+                        return await FirebaseMessaging.instance.getToken();
+                      } catch (e) {
+                        return null;
+                      }
+                    },
+                  );
                 },
-                // Silent fallback on any network error: seamlessly redirect to pre-bundled local website
-                onReceivedError: (controller, request, error) {
-                  final url = request.url;
-                  if (url.host != 'localhost') {
-                    controller.loadUrl(
-                      urlRequest: URLRequest(
-                        url: WebUri(WebVaultShell.offlineBaseUrl),
-                      ),
-                    );
+                onLoadStop: (controller, url) {
+                  if (mounted && _isPageLoading) {
+                    setState(() {
+                      _isPageLoading = false;
+                    });
                   }
                 },
-                onReceivedHttpError: (controller, request, errorResponse) {
-                  final url = request.url;
-                  if (url.host != 'localhost') {
-                    controller.loadUrl(
-                      urlRequest: URLRequest(
-                        url: WebUri(WebVaultShell.offlineBaseUrl),
-                      ),
-                    );
+                onProgressChanged: (controller, progress) {
+                  if (progress >= 85 && mounted && _isPageLoading) {
+                    setState(() {
+                      _isPageLoading = false;
+                    });
                   }
                 },
                 onPermissionRequest: (controller, request) async {
@@ -390,6 +426,43 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
                 onDownloadStartRequest: (controller, downloadRequest) {
                   _handleFileDownload(downloadRequest);
                 },
+              ),
+
+              // Seamless stealth transition loading cover - eliminates black screen completely
+              IgnorePointer(
+                ignoring: !_isPageLoading,
+                child: AnimatedOpacity(
+                  opacity: _isPageLoading ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 250),
+                  child: Container(
+                    color: const Color(0xFF0B0F19),
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 38,
+                            height: 38,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Color(0xFF00FFCC),
+                            ),
+                          ),
+                          SizedBox(height: 18),
+                          Text(
+                            'CALCX VAULT',
+                            style: TextStyle(
+                              color: Color(0xFF00FFCC),
+                              fontSize: 13,
+                              letterSpacing: 2.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
 
               // Floating Quick Panic Calculator Lock Button

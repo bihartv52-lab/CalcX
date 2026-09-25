@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Rate-limiting: limit message push notifications to at most 1 per minute per user
+    // Rate-limiting: limit message push notifications to prevent duplicate trigger bursts (< 2s)
     const { data: lastPushed, error: recentError } = await supabase
       .from('notifications')
       .select('created_at')
@@ -36,11 +36,11 @@ Deno.serve(async (req) => {
       const lastPushedTime = new Date(lastPushed[0].created_at).getTime()
       const diffSeconds = (currentNotificationTime - lastPushedTime) / 1000
 
-      if (diffSeconds < 60) {
+      if (diffSeconds < 2) {
         return new Response(
           JSON.stringify({ 
             success: true, 
-            message: `Skipping push: rate limit exceeded (1 min). Time since last pushed notification: ${diffSeconds.toFixed(1)}s` 
+            message: `Skipping push: duplicate burst prevented. Time since last pushed notification: ${diffSeconds.toFixed(1)}s` 
           }), 
           { status: 200, headers }
         )
@@ -135,6 +135,12 @@ Deno.serve(async (req) => {
             },
             android: {
               priority: 'high',
+              notification: {
+                channel_id: 'calcx_notifications',
+                sound: 'default',
+                default_sound: true,
+                default_vibrate_timings: true,
+              },
             },
           },
         }),
@@ -173,6 +179,7 @@ Deno.serve(async (req) => {
             title: displayTitle,
             body: displayBody,
             sound: 'default',
+            android_channel_id: 'calcx_notifications',
           },
           data: {
             click_action: 'FLUTTER_NOTIFICATION_CLICK',
