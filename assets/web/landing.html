@@ -1434,13 +1434,17 @@ async function copyText(text, msg){
 const FORCE_IFRAME = matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
 let dlBusy = false;
 
-function iframeDownload(url){
-  const f = document.createElement('iframe');
-  f.style.cssText = 'position:fixed;width:1px;height:1px;border:0;opacity:0;pointer-events:none';
-  f.setAttribute('aria-hidden', 'true');
-  f.src = url;
-  document.body.appendChild(f);
-  setTimeout(() => f.remove(), 10 * 60 * 1000);
+function triggerDownload(url){
+  const a = document.createElement('a');
+  a.href = url;
+  a.setAttribute('download', APK_NAME);
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => a.remove(), 1000);
+  // Also direct window location after short delay if anchor click is ignored on mobile
+  setTimeout(() => {
+    window.location.href = url;
+  }, 350);
 }
 
 async function startApk(btn){
@@ -1455,7 +1459,7 @@ async function startApk(btn){
 
   if (bar) bar.classList.add('show');
   if (fill) fill.style.width = '0%';
-  toast('Download started — CalcX v1.0.1 (74.8 MB)', 'arrow-down');
+  toast('Download started — CalcX v1.0.1', 'arrow-down');
 
   const setPct = p => {
     if (showPct && label) label.textContent = 'Downloading… ' + Math.floor(p) + '%';
@@ -1476,7 +1480,7 @@ async function startApk(btn){
   };
 
   if (FORCE_IFRAME){
-    iframeDownload(APK_URL);
+    triggerDownload(APK_URL);
     finish('Download running in your browser\u2019s download manager', 'arrow-down');
     return;
   }
@@ -1505,8 +1509,8 @@ async function startApk(btn){
     setTimeout(() => URL.revokeObjectURL(u), 20000);
     finish('CalcX.apk saved — check your downloads', 'check');
   } catch (err) {
-    /* CORS or streaming unsupported → silent iframe fallback, still zero navigation */
-    iframeDownload(GITHUB_APK_URL);
+    /* Fallback to direct download */
+    triggerDownload(GITHUB_APK_URL);
     finish('Download running in your browser\u2019s download manager', 'arrow-down');
   }
 }

@@ -58,50 +58,8 @@
 <body>
   <div class="loading-container" id="loading-indicator">
     <div class="spinner"></div>
-    <div class="loading-text">CALCX VAULT</div>
+    <div class="loading-text">LOADING CALCX...</div>
   </div>
-  <script>
-    // Robust Bridge between CalcX Web and Native Flutter Shell
-    (function() {
-      function checkAndSyncAuth() {
-        if (!window.flutter_inappwebview || !window.flutter_inappwebview.callHandler) return;
-        try {
-          for (var i = 0; i < localStorage.length; i++) {
-            var key = localStorage.key(i);
-            var val = localStorage.getItem(key);
-            if (!val || val.length < 20) continue;
-            var parsed = null;
-            try {
-              parsed = JSON.parse(val);
-              if (typeof parsed === 'string') parsed = JSON.parse(parsed);
-            } catch(e) {}
-
-            if (parsed && typeof parsed === 'object') {
-              var user = parsed.user || (parsed.currentSession && parsed.currentSession.user);
-              if (user && user.id) {
-                window.flutter_inappwebview.callHandler('syncAuthSession', val);
-                return;
-              }
-            }
-          }
-        } catch(e) {
-          console.error('Error syncing auth session:', e);
-        }
-      }
-
-      window.addEventListener('flutterInAppWebViewPlatformReady', function() {
-        checkAndSyncAuth();
-        setInterval(checkAndSyncAuth, 3000);
-      });
-      window.addEventListener('storage', checkAndSyncAuth);
-      if (document.readyState === 'complete') {
-        checkAndSyncAuth();
-      } else {
-        window.addEventListener('load', checkAndSyncAuth);
-      }
-      setInterval(checkAndSyncAuth, 4000);
-    })();
-  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

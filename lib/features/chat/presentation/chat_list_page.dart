@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:calcx/features/friends/presentation/friends_page.dart';
 import 'package:calcx/features/friends/presentation/user_search_page.dart';
+import 'package:calcx/features/notes/data/notes_repository.dart';
+import 'package:calcx/features/notes/presentation/widgets/notes_horizontal_bar.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 
 final recentChatsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
@@ -50,6 +52,8 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (mounted) {
         ref.invalidate(recentChatsProvider);
+        ref.invalidate(activeNotesProvider);
+        ref.invalidate(myNoteProvider);
       }
     });
   }
@@ -82,6 +86,8 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
         onRefresh: () async {
           ref.invalidate(recentChatsProvider);
           ref.invalidate(pendingRequestsProvider);
+          ref.invalidate(activeNotesProvider);
+          ref.invalidate(myNoteProvider);
         },
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 110),
@@ -193,6 +199,9 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
               ),
               const SizedBox(height: 12),
             ],
+            
+            const NotesHorizontalBar(),
+            const SizedBox(height: 14),
             
             const _ActiveFriendsBar(),
             const SizedBox(height: 8),
