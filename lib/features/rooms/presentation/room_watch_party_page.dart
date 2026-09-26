@@ -16,7 +16,7 @@ import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
-import 'package:calcx/core/widgets/web_iframe_widget.dart';
+import 'package:calcx/features/rooms/presentation/widgets/watch_party_web_player.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'package:file_picker/file_picker.dart';
@@ -50,6 +50,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
   final GlobalKey _betterPlayerKey = GlobalKey();
   YoutubePlayerController? _youtubeController;
   BetterPlayerController? _betterPlayerController;
+  WatchPartyWebController? _webController;
   InAppWebViewController? _webViewController;
   RealtimeChannel? _realtimeBroadcastChannel;
   bool _isPipMinimized = false;
@@ -109,6 +110,19 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
   }
 
   void _initializeControllerAndStreams() {
+    if (kIsWeb) {
+      _webController = WatchPartyWebController();
+      _webController!.onPlaybackChanged = (isPlaying, position) {
+        if (!mounted) return;
+        final myId = ref.read(roomRepositoryProvider).supabase?.auth.currentUser?.id;
+        final hostId = _lastRoomData?['host_id'] as String?;
+        if (myId != null && hostId != null && myId == hostId) {
+          _syncPlayback(showSnackBar: false);
+        }
+        setState(() {});
+      };
+    }
+
     // Subscribe to Supabase Realtime Broadcast channel room:{roomId}:watch_party (<500ms latency)
     final client = SupabaseService.clientOrNull;
     if (client != null) {
@@ -186,7 +200,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
         } else {
           // Host auto-syncs position to database periodically when playing
           bool isPlaying = false;
-          if (_sourceType == 'youtube' && _youtubeController != null) {
+          if (kIsWeb && _webController != null) {
+            isPlaying = _webController!.isPlaying;
+          } else if (_sourceType == 'youtube' && _youtubeController != null) {
             isPlaying = _youtubeController!.value.isPlaying;
           } else if (_sourceType == 'browser') {
             isPlaying = true;
@@ -205,8 +221,8 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     if (urlA == urlB) return true;
     if (urlA == null || urlB == null) return false;
     
-    final idA = YoutubePlayer.convertUrlToId(urlA);
-    final idB = YoutubePlayer.convertUrlToId(urlB);
+    final idA = YouTubeUrlParser.extractVideoId(urlA);
+    final idB = YouTubeUrlParser.extractVideoId(urlB);
     if (idA != null && idB != null) {
       return idA == idB;
     }
@@ -227,14 +243,14 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
     final state = PlaybackStateSnapshot.fromMap(Map<String, dynamic>.from(playbackJson));
 
-    if (isHost) {
-      // Host is the driver, don't sync from DB to avoid feedback loops
+    final sourceUrl = state.sourceUrl;
+    final dbSourceType = state.sourceType;
+
+    // If host has already loaded source, avoid re-seeking from DB
+    if (isHost && _currentSourceUrl != null) {
       return;
     }
 
-    // Sync guest with host's playback state
-    final sourceUrl = state.sourceUrl;
-    final dbSourceType = state.sourceType;
     if (dbSourceType == 'screenshare') {
       if (_sourceType != 'screenshare') {
         setState(() {
@@ -249,9 +265,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
     if (sourceUrl == null || sourceUrl.isEmpty) return;
 
-    // Check if source changed
+    // Check if source changed or first load
     final sourceChanged = !_isSameSource(_currentSourceUrl, sourceUrl) || _sourceType == 'screenshare';
-    if (sourceChanged) {
+    if (sourceChanged || _currentSourceUrl == null) {
       _currentSourceUrl = sourceUrl;
       _urlController.text = sourceUrl;
 
@@ -263,7 +279,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       }
 
       final targetSourceType = dbSourceType ?? (
-        (sourceUrl.contains('youtube.com') || sourceUrl.contains('youtu.be'))
+        YouTubeUrlParser.isYouTubeUrl(sourceUrl)
             ? 'youtube'
             : (sourceUrl.contains('spotify.com') ? 'youtube' : 'url')
       );
@@ -277,6 +293,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       }
     }
 
+    // If host, stop here (host doesn't continuously sync position from DB to avoid jitter)
+    if (isHost) return;
+
     // Calculate estimated live position
     final targetPosition = state.estimatedLivePosition;
     final isPlaying = state.isPlaying;
@@ -285,7 +304,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     // Sync playback speed
     if (_playbackSpeed != targetSpeed) {
       _playbackSpeed = targetSpeed;
-      if (_sourceType == 'youtube' && _youtubeController != null) {
+      if (kIsWeb && _webController != null) {
+        _webController!.setPlaybackRate(targetSpeed);
+      } else if (_sourceType == 'youtube' && _youtubeController != null) {
         _youtubeController!.setPlaybackRate(targetSpeed);
       } else if (_betterPlayerController != null) {
         _betterPlayerController!.setSpeed(targetSpeed);
@@ -293,7 +314,19 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     }
 
     // Sync play/pause and position
-    if (_sourceType == 'youtube' && _youtubeController != null) {
+    if (kIsWeb && _webController != null) {
+      if (isPlaying && !_webController!.isPlaying) {
+        _webController!.play();
+      } else if (!isPlaying && _webController!.isPlaying) {
+        _webController!.pause();
+      }
+
+      final currentPos = _webController!.currentPosition;
+      final diff = (currentPos - targetPosition).inMilliseconds.abs();
+      if (diff > 1500) {
+        _webController!.seekTo(targetPosition);
+      }
+    } else if (_sourceType == 'youtube' && _youtubeController != null) {
       // For YouTube
       if (isPlaying && !_youtubeController!.value.isPlaying) {
         _youtubeController!.play();
@@ -371,7 +404,19 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     }
 
     // Sync play/pause & drift correction (>500ms)
-    if (_sourceType == 'youtube' && _youtubeController != null) {
+    if (kIsWeb && _webController != null) {
+      if (isPlaying && !_webController!.isPlaying) {
+        _webController!.play();
+      } else if (!isPlaying && _webController!.isPlaying) {
+        _webController!.pause();
+      }
+
+      final currentPos = _webController!.currentPosition;
+      final diff = (currentPos - targetPosition).inMilliseconds.abs();
+      if (diff > 500) { // Drift correction threshold: 500ms
+        _webController!.seekTo(targetPosition);
+      }
+    } else if (_sourceType == 'youtube' && _youtubeController != null) {
       if (isPlaying && !_youtubeController!.value.isPlaying) {
         _youtubeController!.play();
       } else if (!isPlaying && _youtubeController!.value.isPlaying) {
@@ -415,6 +460,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     _chatScrollController.dispose();
     _youtubeController?.dispose();
     _betterPlayerController?.dispose();
+    _webController?.dispose();
 
     _toastTimer?.cancel();
     ref.read(liveKitCallServiceProvider).leaveRoom();
@@ -548,19 +594,23 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
   void _loadYouTubeVideo(String url) {
     try {
-      final videoId = YoutubePlayer.convertUrlToId(url);
-      if (videoId == null) {
+      final videoId = YouTubeUrlParser.extractVideoId(url);
+      final playlistId = YouTubeUrlParser.extractPlaylistId(url);
+
+      if (videoId == null && playlistId == null) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Invalid YouTube URL')));
         return;
       }
 
-      _currentSourceUrl = 'https://www.youtube.com/embed/$videoId';
+      _currentSourceUrl = url;
+      _sourceType = 'youtube';
+
       if (kIsWeb) {
-        setState(() {
-          _sourceType = 'youtube';
-        });
+        final embedUrl = YouTubeUrlParser.buildEmbedUrl(url, autoPlay: true);
+        _webController?.loadSource(embedUrl, isYouTube: true, autoPlay: true);
+        setState(() {});
         return;
       }
 
@@ -569,7 +619,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       _betterPlayerController = null;
 
       _youtubeController = YoutubePlayerController(
-        initialVideoId: videoId,
+        initialVideoId: videoId ?? '',
         flags: const YoutubePlayerFlags(
           autoPlay: false,
           mute: false,
@@ -579,9 +629,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       _youtubeController?.unMute();
       _youtubeController?.setVolume(100);
 
-      setState(() {
-        _sourceType = 'youtube';
-      });
+      setState(() {});
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -628,6 +676,20 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
   Future<void> _loadDirectUrl(String url) async {
     try {
+      _currentSourceUrl = url;
+      _sourceType = 'url';
+
+      if (kIsWeb) {
+        _webController?.loadSource(url, isYouTube: false, autoPlay: true);
+        setState(() {});
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Video URL loaded!')));
+        }
+        return;
+      }
+
       _youtubeController?.dispose();
       _youtubeController = null;
       _betterPlayerController?.dispose();
@@ -645,9 +707,7 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       );
       _betterPlayerController?.setVolume(1.0);
 
-      setState(() {
-        _sourceType = 'url';
-      });
+      setState(() {});
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -665,12 +725,35 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
   Future<void> _loadLocalFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.video);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        withData: kIsWeb,
+      );
 
-      if (result == null) return;
+      if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
+
+      if (kIsWeb) {
+        if (file.bytes != null && _webController != null) {
+          final blobUrl = _webController!.createBlobUrl(file.bytes!, file.name);
+          if (blobUrl != null) {
+            _sourceType = 'local';
+            _currentSourceUrl = blobUrl;
+            _webController!.loadBlobUrl(blobUrl, autoPlay: true);
+            setState(() {});
+            if (mounted) {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('Loaded: ${file.name}')));
+            }
+          }
+        }
+        return;
+      }
+
       _localFilePath = file.path;
+      if (_localFilePath == null) return;
 
       _youtubeController?.dispose();
       _youtubeController = null;
@@ -712,7 +795,10 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
       var position = Duration.zero;
       bool isPlaying = false;
 
-      if (_sourceType == 'youtube' && _youtubeController != null) {
+      if (kIsWeb && _webController != null) {
+        position = _webController!.currentPosition;
+        isPlaying = _webController!.isPlaying;
+      } else if (_sourceType == 'youtube' && _youtubeController != null) {
         position = _youtubeController!.value.position;
         isPlaying = _youtubeController!.value.isPlaying;
       } else if (_sourceType == 'browser') {
@@ -964,17 +1050,17 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
               child: _sourceType == 'screenshare'
                   ? _buildScreenSharePlayer()
                   : kIsWeb
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
-                      child: _currentSourceUrl != null && _currentSourceUrl!.isNotEmpty
-                          ? createIFrameWidget(_currentSourceUrl!)
+                      ? (_webController != null && _currentSourceUrl != null && _currentSourceUrl!.isNotEmpty
+                          ? WatchPartyWebPlayerWidget(
+                              controller: _webController!,
+                              isFullscreen: _isFullscreen,
+                            )
                           : Container(
                               color: Colors.black,
                               child: const Center(
                                 child: Text('No video loaded', style: TextStyle(color: Colors.white60)),
                               ),
-                            ),
-                    )
+                            ))
                   : _sourceType == 'youtube' && _youtubeController != null
                       ? ClipRRect(
                           borderRadius: BorderRadius.circular(_isFullscreen ? 0 : 16),
@@ -1232,14 +1318,22 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
                           ],
                           IconButton(
                             icon: Icon(
-                              _sourceType == 'youtube' && _youtubeController != null
-                                  ? (_youtubeController!.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded)
-                                  : (_betterPlayerController?.isPlaying() == true ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                              (kIsWeb && _webController != null)
+                                  ? (_webController!.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded)
+                                  : (_sourceType == 'youtube' && _youtubeController != null
+                                      ? (_youtubeController!.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded)
+                                      : (_betterPlayerController?.isPlaying() == true ? Icons.pause_rounded : Icons.play_arrow_rounded)),
                               color: Colors.white,
                               size: 18,
                             ),
                             onPressed: () {
-                              if (_sourceType == 'youtube' && _youtubeController != null) {
+                              if (kIsWeb && _webController != null) {
+                                if (_webController!.isPlaying) {
+                                  _webController!.pause();
+                                } else {
+                                  _webController!.play();
+                                }
+                              } else if (_sourceType == 'youtube' && _youtubeController != null) {
                                 if (_youtubeController!.value.isPlaying) {
                                   _youtubeController!.pause();
                                 } else {
@@ -1272,7 +1366,9 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
                               setState(() {
                                 _playbackSpeed = speed;
                               });
-                              if (_sourceType == 'youtube' && _youtubeController != null) {
+                              if (kIsWeb && _webController != null) {
+                                _webController!.setPlaybackRate(speed);
+                              } else if (_sourceType == 'youtube' && _youtubeController != null) {
                                 _youtubeController!.setPlaybackRate(speed);
                               } else if (_betterPlayerController != null) {
                                 _betterPlayerController!.setSpeed(speed);
@@ -1334,15 +1430,24 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
     final mediaVolume = ref.watch(watchPartyVolumeProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final vol = isMediaMuted ? 0.0 : mediaVolume;
-      if (_betterPlayerController != null) {
-        _betterPlayerController!.setVolume(vol);
-      }
-      if (_youtubeController != null) {
+      if (kIsWeb && _webController != null) {
         if (isMediaMuted || vol == 0.0) {
-          _youtubeController!.mute();
+          _webController!.mute();
         } else {
-          _youtubeController!.unMute();
-          _youtubeController!.setVolume((vol * 100).toInt());
+          _webController!.unMute();
+          _webController!.setVolume(vol);
+        }
+      } else {
+        if (_betterPlayerController != null) {
+          _betterPlayerController!.setVolume(vol);
+        }
+        if (_youtubeController != null) {
+          if (isMediaMuted || vol == 0.0) {
+            _youtubeController!.mute();
+          } else {
+            _youtubeController!.unMute();
+            _youtubeController!.setVolume((vol * 100).toInt());
+          }
         }
       }
     });
@@ -1732,7 +1837,8 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
           ],
 
           // Sync Buttons (Portrait View)
-          if (_youtubeController != null ||
+          if ((kIsWeb && _currentSourceUrl != null && _currentSourceUrl!.isNotEmpty) ||
+              _youtubeController != null ||
               _localFilePath != null ||
               _sourceType == 'url') ...[
             GlassCard(
