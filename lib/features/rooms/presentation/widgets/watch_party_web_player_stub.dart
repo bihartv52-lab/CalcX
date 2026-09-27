@@ -16,6 +16,7 @@ class WatchPartyWebController {
   void setPlaybackRate(double rate) {}
   void loadSource(String url, {required bool isYouTube, bool autoPlay = true}) {}
   String? createBlobUrl(Uint8List bytes, String filename) => null;
+  Future<Map<String, String>?> pickLocalVideoFile() async => null;
   void loadBlobUrl(String blobUrl, {bool autoPlay = true}) {}
   void dispose() {}
 }

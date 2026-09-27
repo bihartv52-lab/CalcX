@@ -1,8 +1,10 @@
 import 'package:calcx/app/app_router.dart';
 import 'package:calcx/core/constants/app_routes.dart';
 import 'package:calcx/features/calculator/presentation/calculator_controller.dart';
+import 'package:calcx/features/calls/data/call_repository.dart';
 import 'package:calcx/features/calls/data/call_session_provider.dart';
 import 'package:calcx/features/calls/data/livekit_call_service.dart';
+import 'package:calcx/features/notes/services/ritune_service.dart';
 import 'package:calcx/core/widgets/incoming_call_listener.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -32,12 +34,25 @@ class QuickPanicCalculatorButton extends ConsumerWidget {
       ref.read(activeCallSessionProvider.notifier).endCurrentCall();
     } catch (_) {}
 
-    // 2. Immediately leave any LiveKit room / voice channel / watch party audio
+    // 2. Reject and dismiss any pending incoming calls
+    try {
+      final incoming = ref.read(incomingCallsProvider).value ?? [];
+      for (final call in incoming) {
+        ref.read(callRepositoryProvider).rejectCall(call.id);
+      }
+    } catch (_) {}
+
+    // 3. Immediately leave any LiveKit room / voice channel / watch party audio
     try {
       ref.read(liveKitCallServiceProvider).leaveRoom();
     } catch (_) {}
 
-    // 3. Ensure call screen overlay flags are reset
+    // 4. Stop any playing note or music audio
+    try {
+      ref.read(ritunePlaybackProvider.notifier).stop();
+    } catch (_) {}
+
+    // 5. Ensure call screen overlay flags are reset
     try {
       ref.read(isCallScreenShowingProvider.notifier).state = false;
     } catch (_) {}

@@ -10,14 +10,35 @@ create table if not exists public.user_notes (
     song_artwork text,
     song_url text,
     is_local_song boolean not null default false,
-    audience text not null default 'mutual' check (audience in ('mutual', 'close_friends', 'everyone')),
+    audience text not null default 'mutual' check (audience in ('mutual', 'close_friends', 'selected_friends', 'everyone')),
+    mentioned_user_id uuid references public.profiles(id) on delete set null,
+    mentioned_username text,
+    mentioned_display_name text,
+    mentioned_avatar_url text,
+    allowed_user_ids text[] default '{}',
     created_at timestamptz not null default now(),
     expires_at timestamptz not null default (now() + interval '24 hours'),
     constraint one_active_note_per_user unique (user_id)
 );
 
+-- Backward-compatible column additions for existing tables
+alter table public.user_notes add column if not exists mentioned_user_id uuid references public.profiles(id) on delete set null;
+alter table public.user_notes add column if not exists mentioned_username text;
+alter table public.user_notes add column if not exists mentioned_display_name text;
+alter table public.user_notes add column if not exists mentioned_avatar_url text;
+alter table public.user_notes add column if not exists allowed_user_ids text[] default '{}';
+alter table public.user_notes drop constraint if exists user_notes_audience_check;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'user_notes_audience_check') then
+    alter table public.user_notes add constraint user_notes_audience_check check (audience in ('mutual', 'close_friends', 'selected_friends', 'everyone'));
+  end if;
+end;
+$$;
+
 create index if not exists idx_user_notes_user_id on public.user_notes(user_id);
 create index if not exists idx_user_notes_expires_at on public.user_notes(expires_at);
+create index if not exists idx_user_notes_mentioned on public.user_notes(mentioned_user_id);
 
 -- Close Friends table for private notes audience
 create table if not exists public.close_friends (

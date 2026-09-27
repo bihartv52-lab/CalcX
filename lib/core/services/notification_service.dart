@@ -1,6 +1,7 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:calcx/core/services/supabase_service.dart';
+import 'package:calcx/core/services/web_notification_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -36,10 +37,21 @@ class NotificationService {
 
   static Future<void> maybeInitialize() async {
     try {
-      await Firebase.initializeApp();
-      
-      // Register background message handler
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      if (kIsWeb) {
+        await Firebase.initializeApp(
+          options: const FirebaseOptions(
+            apiKey: 'AIzaSyCf3TMN_eosEhdx-5T6Va8-D_iucjMAx78',
+            appId: '1:534955793586:web:calcxweb',
+            messagingSenderId: '534955793586',
+            projectId: 'calcx-e4acf',
+            storageBucket: 'calcx-e4acf.firebasestorage.app',
+          ),
+        );
+      } else {
+        await Firebase.initializeApp();
+        // Register background message handler (Android / iOS only)
+        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      }
 
       final messaging = FirebaseMessaging.instance;
       
@@ -51,10 +63,14 @@ class NotificationService {
         provisional: false,
       );
 
-      // 2. Request Android 13+ POST_NOTIFICATIONS runtime permission explicitly
+      // 2. Request notification permission explicitly
       if (!kIsWeb) {
         try {
           await Permission.notification.request();
+        } catch (_) {}
+      } else {
+        try {
+          await WebNotificationHelper.requestPermission();
         } catch (_) {}
       }
 

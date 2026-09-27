@@ -4,6 +4,7 @@ import 'package:calcx/features/calls/data/call_session_provider.dart';
 import 'package:calcx/features/calls/presentation/active_call_page.dart';
 import 'package:calcx/features/friends/data/friends_repository.dart';
 import 'package:calcx/features/friends/presentation/user_search_page.dart';
+import 'package:calcx/features/notes/presentation/widgets/close_friends_picker_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -32,6 +33,13 @@ class FriendsPage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Friends'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.star_rounded, color: Color(0xFF10B981)),
+            tooltip: 'Close Friends',
+            onPressed: () {
+              CloseFriendsPickerSheet.showManager(context);
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.person_search),
             onPressed: () {
@@ -256,6 +264,9 @@ class _FriendTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final closeFriendIdsAsync = ref.watch(closeFriendIdsProvider);
+    final isClose = closeFriendIdsAsync.value?.contains(friend.id) ?? false;
+
     return ListTile(
       leading: Stack(
         children: [
@@ -285,11 +296,29 @@ class _FriendTile extends ConsumerWidget {
             ),
         ],
       ),
-      title: Text(friend.displayName),
+      title: Row(
+        children: [
+          Flexible(child: Text(friend.displayName, overflow: TextOverflow.ellipsis)),
+          if (isClose) ...[
+            const SizedBox(width: 6),
+            const Icon(Icons.star_rounded, size: 16, color: Color(0xFF10B981)),
+          ],
+        ],
+      ),
       subtitle: Text('@${friend.username} • ${friend.getPresenceText()}'),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          IconButton(
+            icon: Icon(
+              isClose ? Icons.star_rounded : Icons.star_border_rounded,
+              color: isClose ? const Color(0xFF10B981) : Colors.grey,
+            ),
+            tooltip: isClose ? 'Remove Close Friend' : 'Add Close Friend',
+            onPressed: () {
+              ref.read(closeFriendIdsProvider.notifier).toggle(friend.id, !isClose);
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.blueAccent),
             tooltip: 'Send Message',
@@ -299,6 +328,19 @@ class _FriendTile extends ConsumerWidget {
           ),
           PopupMenuButton(
         itemBuilder: (context) => [
+          PopupMenuItem(
+            value: 'toggle_close',
+            child: Row(
+              children: [
+                Icon(
+                  isClose ? Icons.star_outline_rounded : Icons.star_rounded,
+                  color: const Color(0xFF10B981),
+                ),
+                const SizedBox(width: 8),
+                Text(isClose ? 'Remove from Close Friends' : 'Add to Close Friends'),
+              ],
+            ),
+          ),
           const PopupMenuItem(
             value: 'message',
             child: Row(
@@ -332,6 +374,9 @@ class _FriendTile extends ConsumerWidget {
         ],
         onSelected: (value) async {
           switch (value) {
+            case 'toggle_close':
+              ref.read(closeFriendIdsProvider.notifier).toggle(friend.id, !isClose);
+              break;
             case 'message':
               // Navigate to chat
               context.push('/chat/${friend.id}');

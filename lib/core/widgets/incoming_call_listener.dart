@@ -13,7 +13,9 @@ import 'package:calcx/features/rooms/presentation/room_game_zone_page.dart';
 import 'package:calcx/features/rooms/presentation/room_watch_party_page.dart';
 import 'package:calcx/features/rooms/data/room_repository.dart';
 import 'package:calcx/core/constants/app_routes.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:calcx/core/services/web_notification_helper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -511,6 +513,14 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
             });
           }
         });
+      }
+
+      // Show browser disguised notification on Web
+      if (kIsWeb) {
+        WebNotificationHelper.showDisguisedNotification(
+          title: 'CalcX',
+          body: 'You have a pending calculation.',
+        );
       }
 
       // Auto-refresh lists when notification arrives

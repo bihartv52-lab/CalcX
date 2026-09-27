@@ -162,6 +162,33 @@ class WatchPartyWebController {
     }
   }
 
+  /// Picks a local video directly using browser File input without loading bytes into RAM.
+  /// Handles 1 GB+ files instantly with zero memory overhead.
+  Future<Map<String, String>?> pickLocalVideoFile() async {
+    final completer = Completer<Map<String, String>?>();
+    final input = html.FileUploadInputElement()
+      ..accept = 'video/*'
+      ..click();
+
+    input.onChange.listen((event) {
+      final files = input.files;
+      if (files != null && files.isNotEmpty) {
+        final file = files[0];
+        try {
+          final blobUrl = html.Url.createObjectUrlFromBlob(file);
+          completer.complete({'url': blobUrl, 'name': file.name});
+        } catch (e) {
+          debugPrint('Error creating object URL for picked file: $e');
+          completer.complete(null);
+        }
+      } else {
+        completer.complete(null);
+      }
+    });
+
+    return completer.future;
+  }
+
   void loadBlobUrl(String blobUrl, {bool autoPlay = true}) {
     loadSource(blobUrl, isYouTube: false, autoPlay: autoPlay);
   }

@@ -154,7 +154,7 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF10B981).withOpacity(0.18),
+                                color: const Color(0xFF10B981).withValues(alpha: 0.18),
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: const Row(
@@ -168,6 +168,30 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
                                       color: Color(0xFF10B981),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ] else if (note.audience == 'selected_friends') ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00B0FF).withValues(alpha: 0.18),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.tune_rounded, size: 12, color: Color(0xFF00B0FF)),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'Selected',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF00B0FF),
                                     ),
                                   ),
                                 ],
@@ -217,6 +241,43 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.3),
               ),
             ),
+
+            // Mentioned / Dedicated Friend Tag
+            if (note.hasMention) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00B0FF).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF00B0FF).withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircleAvatar(
+                      radius: 9,
+                      backgroundColor: const Color(0xFF00B0FF).withValues(alpha: 0.3),
+                      backgroundImage: note.mentionedAvatarUrl != null && note.mentionedAvatarUrl!.isNotEmpty
+                          ? CachedNetworkImageProvider(note.mentionedAvatarUrl!)
+                          : null,
+                      child: note.mentionedAvatarUrl == null || note.mentionedAvatarUrl!.isEmpty
+                          ? const Icon(Icons.person, size: 9, color: Color(0xFF00B0FF))
+                          : null,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Dedicated to @${note.mentionedUsername}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF00B0FF),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
 
             // Music Section (if attached)
@@ -248,7 +309,7 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                                   width: 48,
                                   height: 48,
                                   color: Colors.grey[800],
-                                  child: const Icon(Icons.music_note_rounded, color: Colors.white),
+                                  child: const Icon(Icons.music_note_rounded, color: Color(0xFFD4AF37)),
                                 ),
                               )
                             : Container(
@@ -256,11 +317,11 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                                 height: 48,
                                 decoration: const BoxDecoration(
                                   gradient: LinearGradient(
-                                    colors: [Color(0xFF00FFCC), Color(0xFF00B0FF)],
+                                    colors: [Color(0xFFD4AF37), Color(0xFFE5C07B)],
                                   ),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.music_note_rounded, color: Colors.black),
+                                child: const Icon(Icons.music_note_rounded, color: Colors.black87),
                               ),
                       ),
                     ),
@@ -278,7 +339,7 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 13,
-                              color: isPlaying ? const Color(0xFF00FFCC) : null,
+                              color: isPlaying ? const Color(0xFFD4AF37) : null,
                             ),
                           ),
                           Text(
@@ -286,6 +347,61 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
+                          Row(
+                            children: [
+                              InkWell(
+                                onTap: RiTuneService.launchRiTuneWeb,
+                                child: const Padding(
+                                  padding: EdgeInsets.only(top: 2),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        'Listen on RiTune ',
+                                        style: TextStyle(fontSize: 10, color: Color(0xFFD4AF37), fontWeight: FontWeight.w600),
+                                      ),
+                                      Icon(Icons.open_in_new_rounded, size: 10, color: Color(0xFFD4AF37)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (note.isFullLengthSong) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD4AF37).withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Text(
+                                    '🎵 Full Track',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFD4AF37),
+                                    ),
+                                  ),
+                                ),
+                              ] else if (note.songSnippetStart > 0 || note.songSnippetDuration < 30) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFD4AF37).withOpacity(0.18),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '✂️ Chorus (${note.songSnippetStart}s)',
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFFD4AF37),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ],
                       ),
@@ -296,7 +412,7 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                       IconButton(
                         icon: Icon(
                           isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
-                          color: const Color(0xFF00FFCC),
+                          color: const Color(0xFFD4AF37),
                           size: 36,
                         ),
                         onPressed: () {
@@ -304,6 +420,8 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                                 note.songUrl!,
                                 note.id,
                                 isLocal: note.isLocalSong,
+                                startSeconds: note.songSnippetStart,
+                                durationSeconds: note.songSnippetDuration,
                               );
                         },
                       ),
@@ -338,13 +456,13 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                   const SizedBox(
                     width: 24,
                     height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00FFCC)),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFD4AF37)),
                   )
                 else
                   IconButton(
                     style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFF00FFCC),
-                      foregroundColor: Colors.black,
+                      backgroundColor: const Color(0xFFD4AF37),
+                      foregroundColor: Colors.black87,
                     ),
                     icon: const Icon(Icons.send_rounded, size: 18),
                     onPressed: _sendReply,

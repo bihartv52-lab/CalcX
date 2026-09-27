@@ -9,6 +9,10 @@ import 'package:calcx/core/services/notification_service.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/core/services/web_update_service.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
+import 'package:calcx/features/calls/data/call_repository.dart';
+import 'package:calcx/features/calls/data/call_session_provider.dart';
+import 'package:calcx/features/calls/data/livekit_call_service.dart';
+import 'package:calcx/features/notes/services/ritune_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -216,6 +220,37 @@ class _WebVaultShellState extends ConsumerState<WebVaultShell> {
 
   void _panicLock() {
     HapticFeedback.heavyImpact();
+
+    try {
+      ref.read(activeCallSessionProvider.notifier).endCurrentCall();
+    } catch (_) {}
+    try {
+      final incoming = ref.read(incomingCallsProvider).value ?? [];
+      for (final call in incoming) {
+        ref.read(callRepositoryProvider).rejectCall(call.id);
+      }
+    } catch (_) {}
+    try {
+      ref.read(liveKitCallServiceProvider).leaveRoom();
+    } catch (_) {}
+    try {
+      ref.read(ritunePlaybackProvider.notifier).stop();
+    } catch (_) {}
+    try {
+      ref.read(isCallScreenShowingProvider.notifier).state = false;
+    } catch (_) {}
+
+    try {
+      _webViewController?.evaluateJavascript(source: '''
+        try {
+          document.querySelectorAll("video, audio").forEach(function(el) {
+            try { el.pause(); el.src = ""; } catch(e) {}
+          });
+          window.dispatchEvent(new CustomEvent("calcx_panic_cut_calls"));
+        } catch(e) {}
+      ''');
+    } catch (_) {}
+
     ref.read(calculatorUnlockedProvider.notifier).state = false;
     context.go(AppRoutes.calculator);
   }

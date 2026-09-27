@@ -1,7 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:calcx/core/models/user_profile.dart';
 import 'package:calcx/features/notes/data/notes_repository.dart';
 import 'package:calcx/features/notes/domain/user_note.dart';
+import 'package:calcx/features/notes/presentation/widgets/close_friends_picker_sheet.dart';
+import 'package:calcx/features/notes/presentation/widgets/friend_mention_picker_sheet.dart';
 import 'package:calcx/features/notes/presentation/widgets/music_picker_bottom_sheet.dart';
+import 'package:calcx/features/notes/presentation/widgets/song_hook_trimmer_sheet.dart';
 import 'package:calcx/features/notes/services/ritune_service.dart';
 import 'package:calcx/features/profile/data/profile_repository.dart';
 import 'package:flutter/material.dart';
@@ -28,7 +32,9 @@ class CreateNoteBottomSheet extends ConsumerStatefulWidget {
 class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
   final TextEditingController _thoughtController = TextEditingController();
   RiTuneTrack? _selectedTrack;
-  String _audience = 'mutual'; // 'mutual', 'close_friends', 'everyone'
+  UserProfile? _mentionedFriend;
+  List<String> _selectedFriendIds = [];
+  String _audience = 'everyone'; // Default to everyone so notes are visible to all contacts
   bool _isPosting = false;
 
   @override
@@ -45,8 +51,21 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
           artwork: widget.existingNote!.songArtwork ?? '',
           streamUrl: widget.existingNote!.songUrl ?? '',
           isLocal: widget.existingNote!.isLocalSong,
+          snippetStartSeconds: widget.existingNote!.songSnippetStart,
+          snippetDurationSeconds: widget.existingNote!.songSnippetDuration,
         );
       }
+      if (widget.existingNote!.mentionedUserId != null) {
+        _mentionedFriend = UserProfile(
+          id: widget.existingNote!.mentionedUserId!,
+          username: widget.existingNote!.mentionedUsername ?? '',
+          displayName: widget.existingNote!.mentionedDisplayName ??
+              widget.existingNote!.mentionedUsername ??
+              'Friend',
+          avatarUrl: widget.existingNote!.mentionedAvatarUrl,
+        );
+      }
+      _selectedFriendIds = List<String>.from(widget.existingNote!.allowedUserIds);
     }
   }
 
@@ -65,11 +84,39 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
     }
   }
 
+  Future<void> _pickMention() async {
+    final friend = await FriendMentionPickerSheet.show(context);
+    if (friend != null && mounted) {
+      setState(() {
+        _mentionedFriend = friend;
+      });
+    }
+  }
+
+  Future<void> _pickSelectedFriends() async {
+    final chosen = await CloseFriendsPickerSheet.showSelector(
+      context,
+      initialSelectedIds: _selectedFriendIds,
+    );
+    if (chosen != null && mounted) {
+      setState(() {
+        _selectedFriendIds = chosen;
+        if (chosen.isNotEmpty) {
+          _audience = 'selected_friends';
+        }
+      });
+    }
+  }
+
+  Future<void> _manageCloseFriends() async {
+    await CloseFriendsPickerSheet.showManager(context);
+  }
+
   Future<void> _shareNote() async {
     final text = _thoughtController.text.trim();
-    if (text.isEmpty && _selectedTrack == null) {
+    if (text.isEmpty && _selectedTrack == null && _mentionedFriend == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a thought or select a song.')),
+        const SnackBar(content: Text('Please enter a thought, add music, or mention a friend.')),
       );
       return;
     }
@@ -78,14 +125,27 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
 
     try {
       await ref.read(notesRepositoryProvider).postNote(
-            content: text.isNotEmpty ? text : '🎵 Listening to ${_selectedTrack?.title}',
+            content: text.isNotEmpty
+                ? text
+                : (_selectedTrack != null
+                    ? '🎵 Listening to ${_selectedTrack?.title}'
+                    : '👋 Hanging out with @${_mentionedFriend?.username}'),
             songTitle: _selectedTrack?.title,
             songArtist: _selectedTrack?.artist,
             songArtwork: _selectedTrack?.artwork,
             songUrl: _selectedTrack?.streamUrl,
             isLocalSong: _selectedTrack?.isLocal ?? false,
             localFilePath: _selectedTrack?.localPath,
+            audioBytes: _selectedTrack?.audioBytes,
+            fileName: _selectedTrack?.fileName,
             audience: _audience,
+            songSnippetStart: _selectedTrack?.snippetStartSeconds ?? 0,
+            songSnippetDuration: _selectedTrack?.snippetDurationSeconds ?? 30,
+            mentionedUserId: _mentionedFriend?.id,
+            mentionedUsername: _mentionedFriend?.username,
+            mentionedDisplayName: _mentionedFriend?.displayName,
+            mentionedAvatarUrl: _mentionedFriend?.avatarUrl,
+            allowedUserIds: _selectedFriendIds,
           );
 
       ref.invalidate(activeNotesProvider);
@@ -139,6 +199,12 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
     }
   }
 
+  String _formatSnippetTime(int seconds) {
+    final m = seconds ~/ 60;
+    final s = seconds % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -183,13 +249,13 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
                     const SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00FFCC)),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFD4AF37)),
                     )
                   else
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00FFCC),
-                        foregroundColor: Colors.black,
+                        backgroundColor: const Color(0xFFD4AF37),
+                        foregroundColor: Colors.black87,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                       ),
@@ -235,6 +301,10 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
                       decoration: BoxDecoration(
                         color: isDark ? const Color(0xFF25293A) : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: const Color(0xFFD4AF37).withOpacity(0.35),
+                          width: 1,
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.2),
@@ -247,7 +317,7 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           if (_selectedTrack != null) ...[
-                            const Icon(Icons.music_note_rounded, size: 14, color: Color(0xFF00FFCC)),
+                            const Icon(Icons.music_note_rounded, size: 14, color: Color(0xFFD4AF37)),
                             const SizedBox(width: 4),
                           ],
                           Flexible(
@@ -300,85 +370,207 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
               // Attached Music Pill / Card or "Add Music" Button
               if (_selectedTrack != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
                     color: isDark ? const Color(0xFF1E2230) : const Color(0xFFF1F3F6),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFF00FFCC).withOpacity(0.4)),
+                    border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.4)),
                   ),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: CachedNetworkImage(
-                          imageUrl: _selectedTrack!.artwork,
-                          width: 40,
-                          height: 40,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => Container(
-                            width: 40,
-                            height: 40,
-                            color: Colors.grey[800],
-                            child: const Icon(Icons.music_note_rounded, color: Colors.white70),
+                      Row(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: CachedNetworkImage(
+                              imageUrl: _selectedTrack!.artwork,
+                              width: 44,
+                              height: 44,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => Container(
+                                width: 44,
+                                height: 44,
+                                color: Colors.grey[800],
+                                child: const Icon(Icons.music_note_rounded, color: Color(0xFFD4AF37)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _selectedTrack!.title,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                Text(
+                                  _selectedTrack!.artist,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: Icon(
+                              playbackState.playingTrackId == _selectedTrack!.id && playbackState.isPlaying
+                                  ? Icons.pause_circle_rounded
+                                  : Icons.play_circle_rounded,
+                              color: const Color(0xFFD4AF37),
+                              size: 30,
+                            ),
+                            onPressed: () {
+                              ref.read(ritunePlaybackProvider.notifier).togglePlay(
+                                    _selectedTrack!,
+                                    startSeconds: _selectedTrack!.snippetStartSeconds,
+                                    durationSeconds: _selectedTrack!.snippetDurationSeconds,
+                                  );
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20, color: Colors.grey),
+                            onPressed: () {
+                              ref.read(ritunePlaybackProvider.notifier).stop();
+                              setState(() {
+                                _selectedTrack = null;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // Hook Trimmer interactive pill
+                      InkWell(
+                        onTap: () async {
+                          final trimmed = await SongHookTrimmerSheet.show(context, _selectedTrack!);
+                          if (trimmed != null && mounted) {
+                            setState(() {
+                              _selectedTrack = trimmed;
+                            });
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD4AF37).withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFD4AF37).withOpacity(0.35)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                (_selectedTrack!.snippetDurationSeconds <= 0 || _selectedTrack!.snippetDurationSeconds >= _selectedTrack!.durationSeconds)
+                                    ? Icons.all_inclusive_rounded
+                                    : Icons.content_cut_rounded,
+                                size: 13,
+                                color: const Color(0xFFD4AF37),
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                (_selectedTrack!.snippetDurationSeconds <= 0 || _selectedTrack!.snippetDurationSeconds >= _selectedTrack!.durationSeconds)
+                                    ? 'Full Track 🎵 (Entire Song)'
+                                    : 'Hook / Chorus: ${_formatSnippetTime(_selectedTrack!.snippetStartSeconds)} - ${_formatSnippetTime(_selectedTrack!.snippetStartSeconds + _selectedTrack!.snippetDurationSeconds)} (${_selectedTrack!.snippetDurationSeconds}s)',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFD4AF37),
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              const Icon(Icons.tune_rounded, size: 13, color: Color(0xFFD4AF37)),
+                            ],
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _selectedTrack!.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            Text(
-                              _selectedTrack!.artist,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: Icon(
-                          playbackState.playingTrackId == _selectedTrack!.id && playbackState.isPlaying
-                              ? Icons.pause_circle_rounded
-                              : Icons.play_circle_rounded,
-                          color: const Color(0xFF00FFCC),
-                          size: 28,
-                        ),
-                        onPressed: () {
-                          ref.read(ritunePlaybackProvider.notifier).togglePlay(_selectedTrack!);
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded, size: 20, color: Colors.grey),
-                        onPressed: () {
-                          ref.read(ritunePlaybackProvider.notifier).stop();
-                          setState(() {
-                            _selectedTrack = null;
-                          });
-                        },
                       ),
                     ],
                   ),
                 )
               else
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF00FFCC),
-                    side: BorderSide(color: const Color(0xFF00FFCC).withOpacity(0.4)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  ),
-                  icon: const Icon(Icons.music_note_rounded),
-                  label: const Text('Add Music (RiTune & Local Songs)', style: TextStyle(fontWeight: FontWeight.w600)),
-                  onPressed: _pickMusic,
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFD4AF37),
+                          side: BorderSide(color: const Color(0xFFD4AF37).withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        ),
+                        icon: const Icon(Icons.music_note_rounded, size: 20),
+                        label: const Text('Add Music', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        onPressed: _pickMusic,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFFE5C07B),
+                          side: BorderSide(color: const Color(0xFFE5C07B).withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                        ),
+                        icon: const Icon(Icons.alternate_email_rounded, size: 20),
+                        label: Text(
+                          _mentionedFriend != null ? '@${_mentionedFriend!.username}' : 'Tag Friend',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                        onPressed: _pickMention,
+                      ),
+                    ),
+                  ],
                 ),
+
+              // Mentioned Friend Banner (if selected with music or thought)
+              if (_mentionedFriend != null) ...[
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E2230) : const Color(0xFFF1F3F6),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF00B0FF).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 13,
+                        backgroundColor: const Color(0xFF00B0FF).withValues(alpha: 0.2),
+                        backgroundImage: _mentionedFriend!.avatarUrl != null && _mentionedFriend!.avatarUrl!.isNotEmpty
+                            ? CachedNetworkImageProvider(_mentionedFriend!.avatarUrl!)
+                            : null,
+                        child: _mentionedFriend!.avatarUrl == null || _mentionedFriend!.avatarUrl!.isEmpty
+                            ? const Icon(Icons.person, size: 14, color: Color(0xFF00B0FF))
+                            : null,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Tagged @${_mentionedFriend!.username} in this note',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF00B0FF)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => setState(() => _mentionedFriend = null),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4.0),
+                          child: Icon(Icons.close_rounded, size: 16, color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
 
               // Audience / Privacy Selector ("Who can see this?")
@@ -404,7 +596,7 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
                     const SizedBox(height: 12),
                     _AudienceOption(
                       title: 'Mutual Friends',
-                      subtitle: 'Followers you follow back & mutual chats',
+                      subtitle: 'Followers you follow back & mutual friends',
                       icon: Icons.people_alt_rounded,
                       value: 'mutual',
                       groupValue: _audience,
@@ -418,7 +610,47 @@ class _CreateNoteBottomSheetState extends ConsumerState<CreateNoteBottomSheet> {
                       iconColor: const Color(0xFF10B981),
                       value: 'close_friends',
                       groupValue: _audience,
+                      trailingAction: TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: const Color(0xFF10B981),
+                        ),
+                        onPressed: _manageCloseFriends,
+                        child: const Text('Edit List', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      ),
                       onChanged: (val) => setState(() => _audience = val!),
+                    ),
+                    const Divider(height: 16),
+                    _AudienceOption(
+                      title: 'Selected Friends Only',
+                      subtitle: _selectedFriendIds.isEmpty
+                          ? 'Choose specific friends for this note'
+                          : '${_selectedFriendIds.length} friends selected',
+                      icon: Icons.tune_rounded,
+                      iconColor: const Color(0xFF00B0FF),
+                      value: 'selected_friends',
+                      groupValue: _audience,
+                      trailingAction: TextButton(
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          foregroundColor: const Color(0xFF00B0FF),
+                        ),
+                        onPressed: _pickSelectedFriends,
+                        child: Text(
+                          _selectedFriendIds.isEmpty ? 'Choose' : '${_selectedFriendIds.length} Selected',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        setState(() => _audience = val!);
+                        if (_selectedFriendIds.isEmpty) {
+                          _pickSelectedFriends();
+                        }
+                      },
                     ),
                     const Divider(height: 16),
                     _AudienceOption(
@@ -460,6 +692,7 @@ class _AudienceOption extends StatelessWidget {
     required this.value,
     required this.groupValue,
     required this.onChanged,
+    this.trailingAction,
   });
 
   final String title;
@@ -469,6 +702,7 @@ class _AudienceOption extends StatelessWidget {
   final String value;
   final String groupValue;
   final ValueChanged<String?> onChanged;
+  final Widget? trailingAction;
 
   @override
   Widget build(BuildContext context) {
@@ -481,7 +715,7 @@ class _AudienceOption extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: iconColor ?? (selected ? const Color(0xFF00FFCC) : Colors.grey)),
+            Icon(icon, size: 20, color: iconColor ?? (selected ? const Color(0xFFD4AF37) : Colors.grey)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -492,7 +726,7 @@ class _AudienceOption extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                      color: selected ? const Color(0xFF00FFCC) : null,
+                      color: selected ? const Color(0xFFD4AF37) : null,
                     ),
                   ),
                   Text(
@@ -502,10 +736,11 @@ class _AudienceOption extends StatelessWidget {
                 ],
               ),
             ),
+            if (trailingAction != null) trailingAction!,
             Radio<String>(
               value: value,
               groupValue: groupValue,
-              activeColor: const Color(0xFF00FFCC),
+              activeColor: const Color(0xFFD4AF37),
               onChanged: onChanged,
             ),
           ],

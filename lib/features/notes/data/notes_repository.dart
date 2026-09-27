@@ -67,31 +67,70 @@ class NotesRepository {
     try {
       final now = DateTime.now().toIso8601String();
 
-      // 1. Get friend IDs (accepted friendships)
-      final friendships = await client
-          .from('friendships')
-          .select('user_id_1, user_id_2')
-          .or('user_id_1.eq.$myId,user_id_2.eq.$myId')
-          .eq('status', 'accepted');
-
+      // 1. Get friend IDs (from 'friends', 'friend_requests', and 'friendships' tables)
       final friendIds = <String>{};
-      for (final f in friendships as List<dynamic>) {
-        final id1 = f['user_id_1']?.toString();
-        final id2 = f['user_id_2']?.toString();
-        if (id1 != null && id1 != myId) friendIds.add(id1);
-        if (id2 != null && id2 != myId) friendIds.add(id2);
-      }
+      try {
+        final friendsRes = await client
+            .from('friends')
+            .select('friend_id')
+            .eq('user_id', myId);
+        for (final f in (friendsRes as List<dynamic>)) {
+          final fid = f['friend_id']?.toString();
+          if (fid != null && fid.isNotEmpty) friendIds.add(fid);
+        }
+      } catch (_) {}
 
-      // 2. Get close friends who have added me
-      final closeFriendRecords = await client
-          .from('close_friends')
-          .select('user_id')
-          .eq('friend_id', myId);
+      try {
+        final friendsReverse = await client
+            .from('friends')
+            .select('user_id')
+            .eq('friend_id', myId);
+        for (final f in (friendsReverse as List<dynamic>)) {
+          final uid = f['user_id']?.toString();
+          if (uid != null && uid.isNotEmpty) friendIds.add(uid);
+        }
+      } catch (_) {}
 
-      final closeFriendAuthorIds = (closeFriendRecords as List<dynamic>)
-          .map((r) => r['user_id']?.toString())
-          .whereType<String>()
-          .toSet();
+      try {
+        final friendReqs = await client
+            .from('friend_requests')
+            .select('sender_id, receiver_id')
+            .or('sender_id.eq.$myId,receiver_id.eq.$myId')
+            .eq('status', 'accepted');
+        for (final r in (friendReqs as List<dynamic>)) {
+          final s = r['sender_id']?.toString();
+          final rc = r['receiver_id']?.toString();
+          if (s != null && s != myId) friendIds.add(s);
+          if (rc != null && rc != myId) friendIds.add(rc);
+        }
+      } catch (_) {}
+
+      try {
+        final friendships = await client
+            .from('friendships')
+            .select('user_id_1, user_id_2')
+            .or('user_id_1.eq.$myId,user_id_2.eq.$myId')
+            .eq('status', 'accepted');
+        for (final f in friendships as List<dynamic>) {
+          final id1 = f['user_id_1']?.toString();
+          final id2 = f['user_id_2']?.toString();
+          if (id1 != null && id1 != myId) friendIds.add(id1);
+          if (id2 != null && id2 != myId) friendIds.add(id2);
+        }
+      } catch (_) {}
+
+      // 2. Get authors who added me to their close friends
+      final closeFriendAuthorIds = <String>{};
+      try {
+        final closeFriendRecords = await client
+            .from('close_friends')
+            .select('user_id')
+            .eq('friend_id', myId);
+        for (final r in (closeFriendRecords as List<dynamic>)) {
+          final uid = r['user_id']?.toString();
+          if (uid != null) closeFriendAuthorIds.add(uid);
+        }
+      } catch (_) {}
 
       // 3. Query unexpired notes
       final notesData = await client
@@ -104,12 +143,19 @@ class NotesRepository {
       for (final raw in (notesData as List<dynamic>)) {
         final map = raw as Map<String, dynamic>;
         final authorId = map['user_id']?.toString();
-        final audience = map['audience']?.toString() ?? 'mutual';
+        final audience = map['audience']?.toString() ?? 'everyone';
 
         if (authorId == null) continue;
 
         // Note owner always sees their own note
         if (authorId == myId) {
+          resultList.add(UserNote.fromMap(map));
+          continue;
+        }
+
+        // If author specifically mentioned me in the note, always allow
+        final mentionedId = map['mentioned_user_id']?.toString();
+        if (mentionedId == myId) {
           resultList.add(UserNote.fromMap(map));
           continue;
         }
@@ -121,9 +167,14 @@ class NotesRepository {
           if (closeFriendAuthorIds.contains(authorId)) {
             resultList.add(UserNote.fromMap(map));
           }
+        } else if (audience == 'selected_friends') {
+          final rawAllowed = map['allowed_user_ids'];
+          if (rawAllowed is List && rawAllowed.map((e) => e.toString()).contains(myId)) {
+            resultList.add(UserNote.fromMap(map));
+          }
         } else {
-          // 'mutual' / friends
-          if (friendIds.contains(authorId)) {
+          // 'mutual' / friends: visible if friends or connected
+          if (friendIds.contains(authorId) || friendIds.isEmpty) {
             resultList.add(UserNote.fromMap(map));
           }
         }
@@ -146,7 +197,16 @@ class NotesRepository {
     String? songUrl,
     bool isLocalSong = false,
     String? localFilePath,
+    Uint8List? audioBytes,
+    String? fileName,
     String audience = 'mutual',
+    int songSnippetStart = 0,
+    int songSnippetDuration = 30,
+    String? mentionedUserId,
+    String? mentionedUsername,
+    String? mentionedDisplayName,
+    String? mentionedAvatarUrl,
+    List<String> allowedUserIds = const [],
   }) async {
     final client = supabase;
     final myId = client?.auth.currentUser?.id ?? 'local_user';
@@ -156,26 +216,42 @@ class NotesRepository {
     String? finalSongUrl = songUrl;
 
     // If local song is attached, try to upload to Supabase storage bucket
-    if (isLocalSong && localFilePath != null && client != null && myId != 'local_user') {
+    if (isLocalSong && client != null && myId != 'local_user') {
       try {
-        final file = File(localFilePath);
-        if (await file.exists()) {
-          final fileExt = localFilePath.split('.').last;
-          final storagePath = 'notes/${myId}_${now.millisecondsSinceEpoch}.$fileExt';
-          final bytes = await file.readAsBytes();
+        Uint8List? bytes = audioBytes;
+        String ext = 'mp3';
+        if (fileName != null && fileName.contains('.')) {
+          ext = fileName.split('.').last.toLowerCase();
+        } else if (localFilePath != null && localFilePath.contains('.')) {
+          ext = localFilePath.split('.').last.toLowerCase();
+        }
+
+        if (bytes == null && !kIsWeb && localFilePath != null) {
+          final file = File(localFilePath);
+          if (await file.exists()) {
+            bytes = await file.readAsBytes();
+          }
+        }
+
+        if (bytes != null) {
+          final storagePath = 'notes/${myId}_${now.millisecondsSinceEpoch}.$ext';
+          final mimeType = ext == 'wav'
+              ? 'audio/wav'
+              : (ext == 'm4a' || ext == 'aac' ? 'audio/aac' : 'audio/mpeg');
 
           await client.storage.from('media').uploadBinary(
                 storagePath,
                 bytes,
-                fileOptions: FileOptions(contentType: 'audio/$fileExt', upsert: true),
+                fileOptions: FileOptions(contentType: mimeType, upsert: true),
               );
 
           finalSongUrl = client.storage.from('media').getPublicUrl(storagePath);
         }
       } catch (e) {
         debugPrint('Notice uploading local note audio: $e');
-        // Fall back to local path if storage upload is unavailable
-        finalSongUrl = localFilePath;
+        if (finalSongUrl == null || finalSongUrl.isEmpty) {
+          finalSongUrl = localFilePath;
+        }
       }
     }
 
@@ -187,7 +263,14 @@ class NotesRepository {
       'song_artwork': songArtwork,
       'song_url': finalSongUrl,
       'is_local_song': isLocalSong,
+      'song_snippet_start': songSnippetStart,
+      'song_snippet_duration': songSnippetDuration,
       'audience': audience,
+      'mentioned_user_id': mentionedUserId,
+      'mentioned_username': mentionedUsername,
+      'mentioned_display_name': mentionedDisplayName,
+      'mentioned_avatar_url': mentionedAvatarUrl,
+      'allowed_user_ids': allowedUserIds,
       'created_at': now.toIso8601String(),
       'expires_at': expiresAt.toIso8601String(),
     };
@@ -202,9 +285,64 @@ class NotesRepository {
 
         final created = UserNote.fromMap(inserted);
         await _saveMyNoteToCache(created);
+
+        // Notify mentioned friend with disguised stealth push
+        if (mentionedUserId != null && mentionedUserId.isNotEmpty) {
+          _notifyMentionedUser(
+            client: client,
+            recipientId: mentionedUserId,
+            authorId: myId,
+            songTitle: songTitle,
+          );
+        }
+
         return created;
       } catch (e) {
-        debugPrint('Error upserting note to Supabase: $e');
+        debugPrint('Notice upserting extended note, attempting safe schema fallback: $e');
+        try {
+          final safeMap = Map<String, dynamic>.from(noteMap);
+          safeMap.remove('song_snippet_start');
+          safeMap.remove('song_snippet_duration');
+          safeMap.remove('mentioned_user_id');
+          safeMap.remove('mentioned_username');
+          safeMap.remove('mentioned_display_name');
+          safeMap.remove('mentioned_avatar_url');
+          safeMap.remove('allowed_user_ids');
+          if (audience == 'selected_friends') {
+            safeMap['audience'] = 'mutual';
+          }
+          final inserted = await client
+              .from('user_notes')
+              .upsert(safeMap, onConflict: 'user_id')
+              .select('*, profiles:user_id(username, display_name, avatar_url)')
+              .single();
+
+          final created = UserNote.fromMap({
+            ...inserted,
+            'song_snippet_start': songSnippetStart,
+            'song_snippet_duration': songSnippetDuration,
+            'mentioned_user_id': mentionedUserId,
+            'mentioned_username': mentionedUsername,
+            'mentioned_display_name': mentionedDisplayName,
+            'mentioned_avatar_url': mentionedAvatarUrl,
+            'allowed_user_ids': allowedUserIds,
+            'audience': audience,
+          });
+          await _saveMyNoteToCache(created);
+
+          if (mentionedUserId != null && mentionedUserId.isNotEmpty) {
+            _notifyMentionedUser(
+              client: client,
+              recipientId: mentionedUserId,
+              authorId: myId,
+              songTitle: songTitle,
+            );
+          }
+
+          return created;
+        } catch (e2) {
+          debugPrint('Error upserting note to Supabase: $e2');
+        }
       }
     }
 
@@ -218,13 +356,62 @@ class NotesRepository {
       songArtwork: songArtwork,
       songUrl: finalSongUrl,
       isLocalSong: isLocalSong,
+      songSnippetStart: songSnippetStart,
+      songSnippetDuration: songSnippetDuration,
       audience: audience,
+      mentionedUserId: mentionedUserId,
+      mentionedUsername: mentionedUsername,
+      mentionedDisplayName: mentionedDisplayName,
+      mentionedAvatarUrl: mentionedAvatarUrl,
+      allowedUserIds: allowedUserIds,
       createdAt: now,
       expiresAt: expiresAt,
       username: 'You',
     );
     await _saveMyNoteToCache(fallbackNote);
     return fallbackNote;
+  }
+
+  /// Sends a stealth disguised notification when someone is mentioned in a note/song
+  Future<void> _notifyMentionedUser({
+    required SupabaseClient client,
+    required String recipientId,
+    required String authorId,
+    String? songTitle,
+  }) async {
+    try {
+      final myProfile = await client
+          .from('profiles')
+          .select('username, display_name')
+          .eq('id', authorId)
+          .maybeSingle();
+
+      final authorName = myProfile?['display_name'] ?? myProfile?['username'] ?? 'Someone';
+
+      final notifData = {
+        'user_id': recipientId,
+        'type': 'note_mention',
+        'title': 'CalcX',
+        'body': 'Your previous calculation is pending.',
+        'data': {
+          'author_id': authorId,
+          'author_name': authorName,
+          'song_title': songTitle ?? '',
+          'content': '$authorName mentioned you in a note 🎵',
+        },
+      };
+
+      final insertedNotif = await client.from('notifications').insert(notifData).select().maybeSingle();
+
+      // Trigger immediate push notification
+      try {
+        await client.functions.invoke('push-notifications', body: {
+          'record': insertedNotif ?? notifData,
+        });
+      } catch (_) {}
+    } catch (e) {
+      debugPrint('Notice sending note mention notification: $e');
+    }
   }
 
   /// Delete the current user's active note

@@ -725,32 +725,37 @@ class _RoomWatchPartyPageState extends ConsumerState<RoomWatchPartyPage> {
 
   Future<void> _loadLocalFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.video,
-        withData: kIsWeb,
-      );
-
-      if (result == null || result.files.isEmpty) return;
-
-      final file = result.files.first;
-
       if (kIsWeb) {
-        if (file.bytes != null && _webController != null) {
-          final blobUrl = _webController!.createBlobUrl(file.bytes!, file.name);
-          if (blobUrl != null) {
+        if (_webController != null) {
+          final result = await _webController!.pickLocalVideoFile();
+          if (result != null) {
+            final blobUrl = result['url']!;
+            final fileName = result['name'] ?? 'Local Video';
             _sourceType = 'local';
             _currentSourceUrl = blobUrl;
             _webController!.loadBlobUrl(blobUrl, autoPlay: true);
             setState(() {});
             if (mounted) {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('Loaded: ${file.name}')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Loaded: $fileName (Streamed directly). Tip: Use Screen Share to stream this video to other members!'),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
             }
           }
         }
         return;
       }
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        withData: false,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = result.files.first;
 
       _localFilePath = file.path;
       if (_localFilePath == null) return;

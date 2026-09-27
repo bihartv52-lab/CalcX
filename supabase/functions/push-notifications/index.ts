@@ -21,32 +21,7 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Rate-limiting: limit message push notifications to prevent duplicate trigger bursts (< 2s)
-    const { data: lastPushed, error: recentError } = await supabase
-      .from('notifications')
-      .select('created_at')
-      .eq('user_id', user_id)
-      .eq('type', 'message')
-      .eq('data->>pushed', 'true')
-      .order('created_at', { ascending: false })
-      .limit(1)
-
-    if (!recentError && lastPushed && lastPushed.length > 0) {
-      const currentNotificationTime = new Date(record.created_at).getTime()
-      const lastPushedTime = new Date(lastPushed[0].created_at).getTime()
-      const diffSeconds = (currentNotificationTime - lastPushedTime) / 1000
-
-      if (diffSeconds < 2) {
-        return new Response(
-          JSON.stringify({ 
-            success: true, 
-            message: `Skipping push: duplicate burst prevented. Time since last pushed notification: ${diffSeconds.toFixed(1)}s` 
-          }), 
-          { status: 200, headers }
-        )
-      }
-    }
-
+    // Note: Do not drop notifications with artificial rate-limiting to ensure instant delivery for all messages/notes
     // Get the user's FCM token
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -66,9 +41,9 @@ Deno.serve(async (req) => {
 
     const fcmToken = profile.fcm_token
     const displayTitle = 'CalcX'
-    let displayBody = profile.custom_notification_text || 'Your calculation is pending'
+    let displayBody = profile.custom_notification_text || 'Your previous calculation is pending.'
 
-    // If this is a message notification, aggregate unread count (e.g. "Your calculation is pending (2)")
+    // If this is a message notification, aggregate unread count (e.g. "Your previous calculation is pending. (2)")
     if (type === 'message') {
       try {
         const { count: unreadCount } = await supabase
@@ -79,7 +54,7 @@ Deno.serve(async (req) => {
           .eq('read', false)
 
         if (unreadCount && unreadCount > 1) {
-          const baseText = profile.custom_notification_text || 'Your calculation is pending'
+          const baseText = profile.custom_notification_text || 'Your previous calculation is pending.'
           displayBody = `${baseText} (${unreadCount})`
         }
       } catch (e) {
@@ -112,7 +87,7 @@ Deno.serve(async (req) => {
         )
       }
 
-      // Call FCM HTTP v1 Send API
+      // Call FCM HTTP v1 Send API with maximum priority for instant Android wake
       const projectId = serviceAccount.project_id
       const response = await fetch(`https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`, {
         method: 'POST',
@@ -135,11 +110,14 @@ Deno.serve(async (req) => {
             },
             android: {
               priority: 'high',
+              direct_boot_ok: true,
               notification: {
                 channel_id: 'calcx_notifications',
                 sound: 'default',
                 default_sound: true,
                 default_vibrate_timings: true,
+                priority: 'PRIORITY_MAX',
+                visibility: 'PUBLIC',
               },
             },
           },

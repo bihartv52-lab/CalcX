@@ -9,6 +9,7 @@ import 'package:calcx/features/chat/presentation/chat_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:calcx/features/calls/data/livekit_call_service.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 
 class ActiveCallPage extends ConsumerStatefulWidget {
@@ -478,13 +479,52 @@ class _ActiveCallPageState extends ConsumerState<ActiveCallPage> {
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            isConnecting ? '' : _formatDuration(_elapsed),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.white70,
+                          if (session != null)
+                            ValueListenableBuilder<CallConnectionState>(
+                              valueListenable: session.callService.connectionStateNotifier,
+                              builder: (context, connState, _) {
+                                if (connState == CallConnectionState.reconnecting) {
+                                  return Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.shade900.withValues(alpha: 0.9),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 10,
+                                          height: 10,
+                                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Reconnecting...',
+                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                                return Text(
+                                  isConnecting ? '' : _formatDuration(_elapsed),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white70,
+                                  ),
+                                );
+                              },
+                            )
+                          else
+                            Text(
+                              isConnecting ? '' : _formatDuration(_elapsed),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white70,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -753,25 +793,29 @@ class _RemoteVideoView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Filter the video publications to check if screen share is active
-    final screenSharePub = participant.videoTrackPublications
-        .where((pub) => pub.source == TrackSource.screenShareVideo)
-        .firstOrNull;
-    final videoTrack = screenSharePub?.track ?? (participant.videoTrackPublications.isNotEmpty
-        ? participant.videoTrackPublications.first.track
-        : null);
+    return AnimatedBuilder(
+      animation: participant,
+      builder: (context, _) {
+        final screenSharePub = participant.videoTrackPublications
+            .where((pub) => pub.source == TrackSource.screenShareVideo)
+            .firstOrNull;
+        final videoTrack = screenSharePub?.track ?? (participant.videoTrackPublications.isNotEmpty
+            ? participant.videoTrackPublications.first.track
+            : null);
 
-    if (videoTrack == null) {
-      return const Center(
-        child: Text('No video', style: TextStyle(color: Colors.white70)),
-      );
-    }
+        if (videoTrack == null) {
+          return const Center(
+            child: Text('Waiting for video...', style: TextStyle(color: Colors.white70)),
+          );
+        }
 
-    return Center(
-      child: VideoTrackRenderer(
-        videoTrack as VideoTrack,
-        fit: (screenSharePub != null || isContainFit) ? VideoViewFit.contain : VideoViewFit.cover,
-      ),
+        return Center(
+          child: VideoTrackRenderer(
+            videoTrack as VideoTrack,
+            fit: (screenSharePub != null || isContainFit) ? VideoViewFit.contain : VideoViewFit.cover,
+          ),
+        );
+      },
     );
   }
 }
@@ -783,12 +827,8 @@ class _LocalVideoView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final videoTrack =
-        room?.localParticipant?.videoTrackPublications.isNotEmpty == true
-        ? room!.localParticipant!.videoTrackPublications.first.track
-        : null;
-
-    if (videoTrack == null) {
+    final localParticipant = room?.localParticipant;
+    if (localParticipant == null) {
       return Container(
         color: Colors.black,
         child: const Center(
@@ -797,9 +837,27 @@ class _LocalVideoView extends StatelessWidget {
       );
     }
 
-    return VideoTrackRenderer(
-      videoTrack as VideoTrack,
-      fit: VideoViewFit.cover,
+    return AnimatedBuilder(
+      animation: localParticipant,
+      builder: (context, _) {
+        final videoTrack = localParticipant.videoTrackPublications.isNotEmpty
+            ? localParticipant.videoTrackPublications.first.track
+            : null;
+
+        if (videoTrack == null) {
+          return Container(
+            color: Colors.black,
+            child: const Center(
+              child: Icon(Icons.videocam_off, color: Colors.white),
+            ),
+          );
+        }
+
+        return VideoTrackRenderer(
+          videoTrack as VideoTrack,
+          fit: VideoViewFit.cover,
+        );
+      },
     );
   }
 }

@@ -9,6 +9,8 @@ import 'package:calcx/features/friends/data/friends_repository.dart';
 import 'package:calcx/features/chat/presentation/chat_page.dart';
 import 'package:calcx/features/chat/presentation/widgets/forward_recipient_picker_dialog.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
+import 'package:calcx/core/services/chat_draft_service.dart';
+import 'package:calcx/features/chat/presentation/widgets/delete_chat_dialog.dart';
 import 'package:calcx/features/chat/presentation/widgets/interactive_message_text.dart';
 import 'package:calcx/features/chat/presentation/widgets/message_hover_copy_button.dart';
 import 'package:flutter/material.dart';
@@ -57,6 +59,21 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     
+    final draft = ChatDraftService.getDraftSync('room_${widget.roomId}');
+    if (draft.isNotEmpty) {
+      _messageController.text = draft;
+      _isTextEmpty = false;
+    } else {
+      ChatDraftService.getDraft('room_${widget.roomId}').then((saved) {
+        if (saved.isNotEmpty && mounted && _messageController.text.isEmpty) {
+          setState(() {
+            _messageController.text = saved;
+            _isTextEmpty = false;
+          });
+        }
+      });
+    }
+
     _messageController.addListener(() {
       final text = _messageController.text;
       final isEmpty = text.trim().isEmpty;
@@ -204,6 +221,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
   }
 
   void _onTextChanged(String val) {
+    ChatDraftService.saveDraft('room_${widget.roomId}', val);
     if (val.isNotEmpty) {
       if (!_lastSentTypingState || _typingThrottleTimer == null) {
         _lastSentTypingState = true;
@@ -270,6 +288,7 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
 
     _messageController.clear();
     _messageFocusNode.requestFocus();
+    ChatDraftService.clearDraft('room_${widget.roomId}');
     
     _typingThrottleTimer?.cancel();
     _typingThrottleTimer = null;
@@ -645,6 +664,63 @@ class _RoomChatPageState extends ConsumerState<RoomChatPage> with WidgetsBinding
                         _isSearching = true;
                       });
                     },
+                  ),
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert_rounded, size: 22),
+                    onSelected: (val) async {
+                      if (val == 'clear_chat') {
+                        final choice = await DeleteChatDialog.show(
+                          context,
+                          targetName: widget.roomName,
+                          isRoom: true,
+                        );
+                        if (choice != null && mounted) {
+                          Duration? duration;
+                          bool mediaOnly = false;
+                          switch (choice) {
+                            case DeleteChatChoice.lastTwoHours:
+                              duration = const Duration(hours: 2);
+                              break;
+                            case DeleteChatChoice.lastDay:
+                              duration = const Duration(hours: 24);
+                              break;
+                            case DeleteChatChoice.wholeChat:
+                              duration = null;
+                              break;
+                            case DeleteChatChoice.mediaOnly:
+                              duration = null;
+                              mediaOnly = true;
+                              break;
+                          }
+                          await ref.read(chatRepositoryProvider).deleteChatRange(
+                                roomId: widget.roomId,
+                                duration: duration,
+                                mediaOnly: mediaOnly,
+                              );
+                          if (mounted && context.mounted) {
+                            setState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(mediaOnly ? '🗑️ All room media deleted' : '🗑️ Room messages cleared'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'clear_chat',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_sweep_rounded, size: 18, color: Colors.redAccent),
+                            SizedBox(width: 8),
+                            Text('Clear Messages...', style: TextStyle(color: Colors.redAccent)),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ],

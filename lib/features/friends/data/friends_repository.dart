@@ -2,11 +2,35 @@ import 'package:calcx/core/models/user_profile.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final friendsRepositoryProvider = Provider<FriendsRepository>((ref) {
   return FriendsRepository(SupabaseService.clientOrNull);
 });
+
+final closeFriendIdsProvider = AsyncNotifierProvider<CloseFriendIdsNotifier, Set<String>>(
+  CloseFriendIdsNotifier.new,
+);
+
+class CloseFriendIdsNotifier extends AsyncNotifier<Set<String>> {
+  @override
+  Future<Set<String>> build() async {
+    final repo = ref.watch(friendsRepositoryProvider);
+    return repo.getCloseFriendIds();
+  }
+
+  Future<void> toggle(String friendId, bool isClose) async {
+    final repo = ref.read(friendsRepositoryProvider);
+    await repo.toggleCloseFriend(friendId, isClose);
+    final current = state.value ?? {};
+    if (isClose) {
+      state = AsyncData({...current, friendId});
+    } else {
+      state = AsyncData(current.where((id) => id != friendId).toSet());
+    }
+  }
+}
 
 class FriendsRepository {
   FriendsRepository(this._supabase);
@@ -342,6 +366,75 @@ class FriendsRepository {
     } catch (e) {
       debugPrint('Error getting sent requests: $e');
       return [];
+    }
+  }
+
+  static const String _closeFriendsKey = 'calcx_close_friend_ids';
+
+  /// Get Close Friend user IDs
+  Future<Set<String>> getCloseFriendIds() async {
+    final myId = _supabase?.auth.currentUser?.id;
+
+    // Load from cache first for 0ms load
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getStringList('${_closeFriendsKey}_$myId') ?? [];
+    final set = cached.toSet();
+
+    if (_supabase == null || myId == null) {
+      return set;
+    }
+
+    try {
+      final records = await _supabase
+          .from('close_friends')
+          .select('friend_id')
+          .eq('user_id', myId);
+
+      final remoteIds = (records as List<dynamic>)
+          .map((r) => r['friend_id']?.toString())
+          .whereType<String>()
+          .toSet();
+
+      await prefs.setStringList('${_closeFriendsKey}_$myId', remoteIds.toList());
+      return remoteIds;
+    } catch (e) {
+      debugPrint('Notice loading close friends: $e');
+      return set;
+    }
+  }
+
+  /// Toggle close friend status
+  Future<void> toggleCloseFriend(String friendId, bool isClose) async {
+    final myId = _supabase?.auth.currentUser?.id;
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getStringList('${_closeFriendsKey}_$myId') ?? [];
+    final set = cached.toSet();
+
+    if (isClose) {
+      set.add(friendId);
+    } else {
+      set.remove(friendId);
+    }
+    await prefs.setStringList('${_closeFriendsKey}_$myId', set.toList());
+
+    if (_supabase == null || myId == null) return;
+
+    try {
+      if (isClose) {
+        await _supabase.from('close_friends').upsert({
+          'user_id': myId,
+          'friend_id': friendId,
+          'created_at': DateTime.now().toIso8601String(),
+        }, onConflict: 'user_id,friend_id');
+      } else {
+        await _supabase
+            .from('close_friends')
+            .delete()
+            .eq('user_id', myId)
+            .eq('friend_id', friendId);
+      }
+    } catch (e) {
+      debugPrint('Notice toggling close friend in DB: $e');
     }
   }
 }

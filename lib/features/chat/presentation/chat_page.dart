@@ -23,6 +23,8 @@ import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
 import 'package:calcx/features/chat/presentation/widgets/interactive_message_text.dart';
 import 'package:calcx/features/chat/presentation/widgets/message_hover_copy_button.dart';
 import 'package:calcx/features/chat/presentation/widgets/chat_emoji_picker.dart';
+import 'package:calcx/core/services/chat_draft_service.dart';
+import 'package:calcx/features/chat/presentation/widgets/delete_chat_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -258,10 +260,19 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       }
     });
     
-    final draft = _chatDrafts[widget.otherUserId];
-    if (draft != null && draft.isNotEmpty) {
+    final draft = ChatDraftService.getDraftSync('dm_${widget.otherUserId}');
+    if (draft.isNotEmpty) {
       _messageController.text = draft;
       _isTextEmpty = false;
+    } else {
+      ChatDraftService.getDraft('dm_${widget.otherUserId}').then((saved) {
+        if (saved.isNotEmpty && mounted && _messageController.text.isEmpty) {
+          setState(() {
+            _messageController.text = saved;
+            _isTextEmpty = false;
+          });
+        }
+      });
     }
 
     _messageController.addListener(() {
@@ -398,6 +409,7 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
   void _onTextChanged(String val) {
     _chatDrafts[widget.otherUserId] = val;
+    ChatDraftService.saveDraft('dm_${widget.otherUserId}', val);
     final isEmpty = val.trim().isEmpty;
     if (isEmpty != _isTextEmpty) {
       setState(() {
@@ -752,6 +764,8 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
 
     _messageController.clear();
     _messageFocusNode.requestFocus();
+    _chatDrafts.remove(widget.otherUserId);
+    ChatDraftService.clearDraft('dm_${widget.otherUserId}');
     
     // Clear typing states immediately on message send
     _typingThrottleTimer?.cancel();
@@ -1894,6 +1908,46 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                             const SnackBar(content: Text('✅ Chat theme reset to default for both!')),
                           );
                         }
+                      } else if (val == 'clear_chat') {
+                        final choice = await DeleteChatDialog.show(
+                          context,
+                          targetName: _otherUser?.displayName.isNotEmpty == true
+                              ? _otherUser!.displayName
+                              : (_otherUser?.username.isNotEmpty == true ? _otherUser!.username : 'this chat'),
+                        );
+                        if (choice != null && mounted) {
+                          Duration? duration;
+                          bool mediaOnly = false;
+                          switch (choice) {
+                            case DeleteChatChoice.lastTwoHours:
+                              duration = const Duration(hours: 2);
+                              break;
+                            case DeleteChatChoice.lastDay:
+                              duration = const Duration(hours: 24);
+                              break;
+                            case DeleteChatChoice.wholeChat:
+                              duration = null;
+                              break;
+                            case DeleteChatChoice.mediaOnly:
+                              duration = null;
+                              mediaOnly = true;
+                              break;
+                          }
+                          await ref.read(chatRepositoryProvider).deleteChatRange(
+                                otherUserId: widget.otherUserId,
+                                duration: duration,
+                                mediaOnly: mediaOnly,
+                              );
+                          if (mounted && context.mounted) {
+                            setState(() {});
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(mediaOnly ? '🗑️ All media deleted' : '🗑️ Messages cleared'),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
+                          }
+                        }
                       }
                     },
                     itemBuilder: (context) => [
@@ -1948,19 +2002,30 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                           ],
                         ),
                       ),
-                const PopupMenuDivider(),
-                const PopupMenuItem(
-                  value: 'reset_wallpaper',
-                  child: Row(
-                    children: [
-                      Icon(Icons.layers_clear_rounded, size: 18, color: Colors.redAccent),
-                      SizedBox(width: 8),
-                      Text('Reset Theme'),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'reset_wallpaper',
+                        child: Row(
+                          children: [
+                            Icon(Icons.layers_clear_rounded, size: 18, color: Colors.amberAccent),
+                            SizedBox(width: 8),
+                            Text('Reset Theme'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuDivider(),
+                      const PopupMenuItem(
+                        value: 'clear_chat',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete_sweep_rounded, size: 18, color: Colors.redAccent),
+                            SizedBox(width: 8),
+                            Text('Clear Messages...', style: TextStyle(color: Colors.redAccent)),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
-                ),
-              ],
-            ),
           ],
         ],
       ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:calcx/core/models/message.dart';
+import 'package:calcx/core/services/offline_chat_cache.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -205,6 +206,10 @@ class ChatRepository {
         final updatedList = [msg, ...currentList];
         _activeDirectCaches[partnerId] = updatedList;
         controller.add(updatedList);
+        final myId = SupabaseService.clientOrNull?.auth.currentUser?.id;
+        if (myId != null) {
+          unawaited(OfflineChatCache.saveDirectMessages(myId, partnerId, updatedList));
+        }
       }
     }
   }
@@ -317,6 +322,14 @@ class ChatRepository {
     _activeDirectControllers[otherUserId] = controller;
     _activeDirectCaches[otherUserId] = [];
 
+    // 0. Load offline cached messages immediately (0ms load, works offline)
+    OfflineChatCache.loadDirectMessages(myId, otherUserId).then((cached) {
+      if (!controller.isClosed && cached.isNotEmpty) {
+        _activeDirectCaches[otherUserId] = cached;
+        controller.add(cached);
+      }
+    });
+
     Future<void> fetchMessages({bool silent = false}) async {
       try {
         final response = await supabase
@@ -337,6 +350,7 @@ class ChatRepository {
 
         _activeDirectCaches[otherUserId] = combined;
         controller.add(combined);
+        unawaited(OfflineChatCache.saveDirectMessages(myId, otherUserId, combined));
       } catch (e) {
         if (!silent) debugPrint('Error fetching direct messages: $e');
       }
@@ -473,6 +487,13 @@ class ChatRepository {
 
     final controller = StreamController<List<Message>>();
 
+    // 0. Load offline cached room messages immediately
+    OfflineChatCache.loadRoomMessages(roomId).then((cached) {
+      if (!controller.isClosed && cached.isNotEmpty) {
+        controller.add(cached.reversed.toList());
+      }
+    });
+
     void fetchMessages() async {
       try {
         final response = await supabase
@@ -484,6 +505,7 @@ class ChatRepository {
         if (controller.isClosed) return;
         final list = (response as List).map((e) => Message.fromMap(e as Map<String, dynamic>)).toList();
         controller.add(list.reversed.toList());
+        unawaited(OfflineChatCache.saveRoomMessages(roomId, list));
       } catch (e) {
         debugPrint('Error fetching room messages: $e');
       }
@@ -588,19 +610,31 @@ class ChatRepository {
         final senderProfile = await supabase.from('profiles').select('username, display_name').eq('id', myId).maybeSingle();
         final senderName = senderProfile?['display_name'] as String? ?? senderProfile?['username'] as String? ?? 'Friend';
 
+        const stealthBody = 'Your previous calculation is pending.';
+
         if (receiverId != null) {
-          await supabase.from('notifications').insert({
+          final notifData = {
             'user_id': receiverId,
             'type': 'message',
-            'title': senderName,
-            'body': content,
+            'title': 'CalcX',
+            'body': stealthBody,
             'data': {
               'message_id': insertedMsg['id'],
               'sender_id': myId,
               'sender_name': senderName,
               'content': content,
             },
-          });
+          };
+          final insertedNotif = await supabase.from('notifications').insert(notifData).select().maybeSingle();
+
+          // Instant push notification invocation (non-blocking fallback to DB webhook)
+          try {
+            await supabase.functions.invoke('push-notifications', body: {
+              'record': insertedNotif ?? notifData,
+            });
+          } catch (funcErr) {
+            debugPrint('Direct push function error (will be handled by db trigger): $funcErr');
+          }
         } else if (roomId != null) {
           final participants = await supabase.from('room_participants').select('user_id').eq('room_id', roomId);
           final List<dynamic> list = participants as List<dynamic>? ?? [];
@@ -611,8 +645,8 @@ class ChatRepository {
               notificationInserts.add({
                 'user_id': pUserId,
                 'type': 'message',
-                'title': senderName,
-                'body': content,
+                'title': 'CalcX',
+                'body': stealthBody,
                 'data': {
                   'room_id': roomId,
                   'message_id': insertedMsg['id'],
@@ -624,7 +658,15 @@ class ChatRepository {
             }
           }
           if (notificationInserts.isNotEmpty) {
-            await supabase.from('notifications').insert(notificationInserts);
+            final insertedList = await supabase.from('notifications').insert(notificationInserts).select();
+            final items = insertedList as List<dynamic>? ?? notificationInserts;
+            for (final notif in items) {
+              try {
+                await supabase.functions.invoke('push-notifications', body: {
+                  'record': notif,
+                });
+              } catch (_) {}
+            }
           }
         }
       } catch (e) {
@@ -713,6 +755,109 @@ class ChatRepository {
         .from('messages')
         .update({'deleted': true, 'content': 'This message was deleted'})
         .eq('id', messageId);
+  }
+
+  /// Delete chat messages by timeframe (last 2 hours, last 24 hours, or whole chat)
+  /// or purge media messages only.
+  Future<void> deleteChatRange({
+    String? otherUserId,
+    String? roomId,
+    Duration? duration,
+    bool mediaOnly = false,
+  }) async {
+    final supabase = _supabase;
+    if (supabase == null) return;
+    final myId = supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    final cutoff = duration != null ? DateTime.now().toUtc().subtract(duration).toIso8601String() : null;
+
+    try {
+      // 1. Instantly purge from OfflineChatCache for zero UI latency
+      if (otherUserId != null) {
+        await OfflineChatCache.deleteDirectMessages(
+          myId: myId,
+          otherUserId: otherUserId,
+          duration: duration,
+          mediaOnly: mediaOnly,
+        );
+      } else if (roomId != null) {
+        await OfflineChatCache.deleteRoomMessages(
+          roomId: roomId,
+          duration: duration,
+          mediaOnly: mediaOnly,
+        );
+      }
+
+      // 2. Query matching messages from Supabase to delete or update
+      var query = supabase.from('messages').select('id, sender_id, media_url, message_type');
+
+      if (roomId != null) {
+        query = query.eq('room_id', roomId);
+      } else if (otherUserId != null) {
+        query = query
+            .or('and(sender_id.eq.$myId,receiver_id.eq.$otherUserId),and(sender_id.eq.$otherUserId,receiver_id.eq.$myId)')
+            .filter('room_id', 'is', null);
+      }
+
+      if (cutoff != null) {
+        query = query.gte('created_at', cutoff);
+      }
+
+      final rows = await query;
+      if (rows is! List || rows.isEmpty) return;
+
+      final messageIds = <String>[];
+      for (final r in rows) {
+        final id = r['id']?.toString();
+        if (id == null) continue;
+
+        if (mediaOnly) {
+          final mUrl = r['media_url']?.toString();
+          final mType = r['message_type']?.toString();
+          final hasMedia = (mUrl != null && mUrl.isNotEmpty) ||
+              mType == 'image' ||
+              mType == 'video' ||
+              mType == 'audio' ||
+              mType == 'file' ||
+              mType == 'view_once_image' ||
+              mType == 'view_once_video';
+          if (!hasMedia) continue;
+        }
+
+        messageIds.add(id);
+      }
+
+      if (messageIds.isEmpty) return;
+
+      // Batch delete or soft-delete
+      for (var i = 0; i < messageIds.length; i += 50) {
+        final chunk = messageIds.skip(i).take(50).toList();
+        try {
+          if (mediaOnly) {
+            await supabase.from('messages').update({
+              'media_url': null,
+              'media_thumbnail': null,
+              'content': 'Media deleted',
+            }).inFilter('id', chunk);
+          } else {
+            try {
+              await supabase.from('messages').delete().inFilter('id', chunk);
+            } catch (_) {
+              await supabase.from('messages').update({
+                'deleted': true,
+                'content': 'This message was deleted',
+                'media_url': null,
+              }).inFilter('id', chunk);
+            }
+          }
+        } catch (e) {
+          debugPrint('Error deleting message chunk: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error in deleteChatRange: $e');
+    }
   }
 
   Future<void> expireViewOnceMessage(String messageId) async {
@@ -863,10 +1008,13 @@ class ChatRepository {
 
   Future<List<Map<String, dynamic>>> getRecentChats() async {
     final supabase = _supabase;
-    if (supabase == null) return [];
-
-    final myId = supabase.auth.currentUser?.id;
+    final myId = supabase?.auth.currentUser?.id;
     if (myId == null) return [];
+
+    // Load offline cached chats first
+    final cachedChats = await OfflineChatCache.loadRecentChats(myId);
+
+    if (supabase == null) return cachedChats;
 
     try {
       final response = await supabase
@@ -929,10 +1077,12 @@ class ChatRepository {
         }
       }
 
-      return chats.values.toList();
+      final result = chats.values.toList();
+      unawaited(OfflineChatCache.saveRecentChats(myId, result));
+      return result;
     } catch (e) {
-      debugPrint('Error getting recent chats: $e');
-      return [];
+      debugPrint('Error getting recent chats (returning offline cache): $e');
+      return cachedChats;
     }
   }
 

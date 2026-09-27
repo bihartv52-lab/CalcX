@@ -61,6 +61,7 @@ class NotesHorizontalBar extends ConsumerWidget {
           return _FriendNoteItem(
             note: note,
             isDark: isDark,
+            myId: myId,
             onTap: () {
               ViewNoteDialog.show(context, note);
             },
@@ -123,7 +124,7 @@ class _MyNoteItem extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (hasNote && myNote!.hasMusic) ...[
-                        const Icon(Icons.music_note_rounded, size: 10, color: Color(0xFF00FFCC)),
+                        const Icon(Icons.music_note_rounded, size: 10, color: Color(0xFFD4AF37)),
                         const SizedBox(width: 2),
                       ],
                       Flexible(
@@ -167,10 +168,10 @@ class _MyNoteItem extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(3),
                         decoration: const BoxDecoration(
-                          color: Color(0xFF00FFCC),
+                          color: Color(0xFFD4AF37),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.add_rounded, size: 14, color: Colors.black),
+                        child: const Icon(Icons.add_rounded, size: 14, color: Colors.black87),
                       ),
                     ),
                 ],
@@ -195,16 +196,34 @@ class _FriendNoteItem extends StatelessWidget {
   const _FriendNoteItem({
     required this.note,
     required this.isDark,
+    this.myId,
     required this.onTap,
   });
 
   final UserNote note;
   final bool isDark;
+  final String? myId;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final isCloseFriend = note.audience == 'close_friends';
+    final isCloseFriend = note.isCloseFriends;
+    final isSelectedFriends = note.isSelectedFriends;
+    final isMentioningMe = note.isMentioning(myId);
+
+    // Border color around avatar
+    Color ringColor = const Color(0xFFD4AF37).withOpacity(0.4);
+    double ringWidth = 1.5;
+    if (isCloseFriend) {
+      ringColor = const Color(0xFF10B981);
+      ringWidth = 2.0;
+    } else if (isSelectedFriends) {
+      ringColor = const Color(0xFF00B0FF);
+      ringWidth = 2.0;
+    } else if (isMentioningMe) {
+      ringColor = const Color(0xFF00B0FF);
+      ringWidth = 2.2;
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 10),
@@ -222,14 +241,21 @@ class _FriendNoteItem extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: isDark ? const Color(0xFF222636) : const Color(0xFFE2E8F0),
+                    color: isMentioningMe
+                        ? (isDark ? const Color(0xFF16253B) : const Color(0xFFE1F5FE))
+                        : (isDark ? const Color(0xFF222636) : const Color(0xFFE2E8F0)),
                     borderRadius: BorderRadius.circular(14),
-                    border: isCloseFriend
-                        ? Border.all(color: const Color(0xFF10B981), width: 1)
-                        : null,
+                    border: Border.all(
+                      color: isMentioningMe
+                          ? const Color(0xFF00B0FF)
+                          : (isCloseFriend
+                              ? const Color(0xFF10B981)
+                              : (isSelectedFriends ? const Color(0xFF00B0FF) : Colors.transparent)),
+                      width: 1,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.12),
+                        color: Colors.black.withValues(alpha: 0.12),
                         blurRadius: 4,
                         offset: const Offset(0, 2),
                       ),
@@ -239,18 +265,28 @@ class _FriendNoteItem extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (note.hasMusic) ...[
-                        const Icon(Icons.music_note_rounded, size: 10, color: Color(0xFF00FFCC)),
+                        const Icon(Icons.music_note_rounded, size: 10, color: Color(0xFFD4AF37)),
+                        const SizedBox(width: 2),
+                      ],
+                      if (note.hasMention) ...[
+                        Icon(
+                          Icons.alternate_email_rounded,
+                          size: 10,
+                          color: isMentioningMe ? const Color(0xFF00B0FF) : const Color(0xFFD4AF37),
+                        ),
                         const SizedBox(width: 2),
                       ],
                       Flexible(
                         child: Text(
-                          note.content,
+                          isMentioningMe ? 'For You' : note.content,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.white : Colors.black87,
+                            color: isMentioningMe
+                                ? const Color(0xFF00B0FF)
+                                : (isDark ? Colors.white : Colors.black87),
                           ),
                         ),
                       ),
@@ -260,14 +296,12 @@ class _FriendNoteItem extends StatelessWidget {
               ),
               const SizedBox(height: 4),
 
-              // Avatar with Close Friends green ring if applicable
+              // Avatar with dynamic ring
               Container(
                 padding: const EdgeInsets.all(2),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  border: isCloseFriend
-                      ? Border.all(color: const Color(0xFF10B981), width: 2)
-                      : Border.all(color: const Color(0xFF00FFCC).withOpacity(0.3), width: 1.5),
+                  border: Border.all(color: ringColor, width: ringWidth),
                 ),
                 child: CircleAvatar(
                   radius: 26,
