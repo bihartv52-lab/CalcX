@@ -77,10 +77,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.webVault,
         name: 'web_vault',
-        builder: (context, state) {
-          final target = state.uri.queryParameters['route'];
-          return WebVaultShell(initialRoute: target);
-        },
+        redirect: (context, state) => AppRoutes.home,
       ),
       GoRoute(
         path: AppRoutes.auth,

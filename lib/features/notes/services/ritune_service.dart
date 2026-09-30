@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as io;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -295,103 +296,133 @@ class RiTuneService {
   static List<RiTuneTrack> getTrendingHits() {
     return const [
       RiTuneTrack(
-        id: 'ritune_1',
-        title: 'Saiyaara',
-        artist: 'Faheem Abdullah • Arslan Nizami',
-        album: 'Saiyaara',
-        artwork: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview116/v4/a4/43/84/a44384e5-94df-d8dc-28d1-7299ba423403/mzaf_10793740921008061732.plus.aac.p.m4a',
-        snippetStartSeconds: 10,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_2',
-        title: 'Dhun (Arijit Singh)',
-        artist: 'Arijit Singh • Mithoon',
-        album: 'Saiyaara',
-        artwork: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview126/v4/bd/10/7c/bd107c87-84bc-2a5b-d4c3-e28e67e3a985/mzaf_17730310232598379417.plus.aac.p.m4a',
-        snippetStartSeconds: 15,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_3',
-        title: 'Tauba Tauba',
+        id: 'itunes_1754562159',
+        title: 'Tauba Tauba (Bad Newz)',
         artist: 'Karan Aujla',
         album: 'Bad Newz',
-        artwork: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview116/v4/7c/49/1b/7c491b9f-0925-c9c0-6d4b-7fe8184f4dc5/mzaf_10287950943806938363.plus.aac.p.m4a',
-        snippetStartSeconds: 5,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_4',
-        title: 'Millionaire',
-        artist: 'Yo Yo Honey Singh',
-        album: 'Glory',
-        artwork: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/7e/39/1d/7e391df7-a9a3-5c8e-a4be-b33783a3f5a1/mzaf_7162985176742581692.plus.aac.p.m4a',
-        snippetStartSeconds: 8,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_5',
-        title: 'Sahiba',
-        artist: 'Aditya Rikhari',
-        album: 'Indie Hits',
-        artwork: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview116/v4/a4/43/84/a44384e5-94df-d8dc-28d1-7299ba423403/mzaf_10793740921008061732.plus.aac.p.m4a',
-        snippetStartSeconds: 12,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_6',
-        title: 'Finding Her',
-        artist: 'kushagra • Showkidd',
-        album: 'Pop Hits',
-        artwork: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview125/v4/44/e9/87/44e98717-36e7-1755-6672-00109c0ca827/mzaf_4734360341764354224.plus.aac.p.m4a',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/79/d2/01/79d201d2-e54d-5604-81fb-313f30db7219/198588533581.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/34/8d/63/348d6342-2c35-bf31-8131-2c8b3cfe3c09/mzaf_15374551219149804677.plus.aac.p.m4a',
         snippetStartSeconds: 0,
         snippetDurationSeconds: 30,
       ),
       RiTuneTrack(
-        id: 'ritune_7',
-        title: 'Jhol',
-        artist: 'Maanu • Annural Khalid',
-        album: 'Jhol',
-        artwork: 'https://images.unsplash.com/photo-1487180144351-b8472da7d491?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview115/v4/ec/3b/b9/ec3bb970-d29a-245f-c967-df427e02e3dc/mzaf_13840742118359567924.plus.aac.p.m4a',
-        snippetStartSeconds: 10,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_8',
-        title: 'Ishq',
-        artist: 'Faheem Abdullah • Rauhan Malik',
-        album: 'Lost;Found',
-        artwork: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview126/v4/bd/10/7c/bd107c87-84bc-2a5b-d4c3-e28e67e3a985/mzaf_17730310232598379417.plus.aac.p.m4a',
-        snippetStartSeconds: 15,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_9',
-        title: 'Winning Speech',
-        artist: 'Karan Aujla',
-        album: 'Four Me',
-        artwork: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview116/v4/7c/49/1b/7c491b9f-0925-c9c0-6d4b-7fe8184f4dc5/mzaf_10287950943806938363.plus.aac.p.m4a',
-        snippetStartSeconds: 0,
-        snippetDurationSeconds: 30,
-      ),
-      RiTuneTrack(
-        id: 'ritune_10',
+        id: 'itunes_6814373102',
         title: 'Apna Bana Le',
-        artist: 'Arijit Singh • Sachin-Jigar',
+        artist: 'Arijit Singh & Sachin-Jigar',
         album: 'Bhediya',
-        artwork: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80',
-        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview126/v4/bd/10/7c/bd107c87-84bc-2a5b-d4c3-e28e67e3a985/mzaf_17730310232598379417.plus.aac.p.m4a',
-        snippetStartSeconds: 15,
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music211/v4/b8/60/43/b8604350-ec89-b4e0-4393-9fb2c7a6f374/8909024122724.png/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/6c/70/72/6c707283-b39b-db60-9d93-4d8e0a50f501/mzaf_3454343074094843569.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1720723962',
+        title: 'O Maahi (Dunki)',
+        artist: 'Pritam & Arijit Singh',
+        album: 'Dunki',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/9e/fb/28/9efb2892-c3b1-0c1c-f7a3-3bcccce6346e/8903431975058_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/7a/ae/fd/7aaefd06-7082-9f9e-e0b4-6cc37bdbf3e0/mzaf_13695558322503852976.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1730725583',
+        title: 'Sajni',
+        artist: 'Arijit Singh & Ram Sampath',
+        album: 'Laapataa Ladies',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/48/d8/bf/48d8bf8f-df58-e05f-62e2-bc494d748ea4/8902894362252_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/0e/5f/a4/0e5fa4f9-c67b-31f1-1d1e-4c3e0f86e233/mzaf_15112412104812626230.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1698183046',
+        title: 'Ve Kamleya',
+        artist: 'Arijit Singh & Shreya Ghoshal',
+        album: 'Rocky Aur Rani Kii Prem Kahaani',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/f0/75/ba/f075baf5-de5c-5c1b-8ad9-2eab666d1ea6/197189415388.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/30/af/79/30af790f-5576-5307-e436-29e949ae6388/mzaf_3370475763365409547.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1728798022',
+        title: 'Tum Se',
+        artist: 'Sachin-Jigar & Varun Jain',
+        album: 'Teri Baaton Mein Aisa Uljha Jiya',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/eb/25/68/eb256897-d444-504e-b64f-977206d3bf40/8903431982186_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/fd/07/e9/fd07e9df-b3eb-5c4e-0571-d1eefb33635c/mzaf_15156398510483609553.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1718278234',
+        title: 'Pehle Bhi Main',
+        artist: 'Vishal Mishra & Raj Shekhar',
+        album: 'ANIMAL',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/db/ad/5e/dbad5e8b-0bee-d962-92d4-021c90e375ac/8902894362092_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/3a/d8/43/3ad8432d-c2e6-052b-5679-cc01c6a599ea/mzaf_7941667053086496020.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1702461667',
+        title: 'Chaleya',
+        artist: 'Anirudh Ravichander, Arijit Singh & Shilpa Rao',
+        album: 'Jawan',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/1e/ff/32/1eff3216-190d-6fd9-8f68-acbba846e6ee/8903431956026_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/55/fb/9c/55fb9c31-320a-5dba-0a3f-5e69552085a7/mzaf_13508224660474474886.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1635014240',
+        title: 'Kesariya',
+        artist: 'Pritam & Arijit Singh',
+        album: 'Brahmāstra',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/9f/13/ca/9f13ca3b-e533-03e0-f19a-f0aaa774581d/196589311191.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/38/4c/5c/384c5c8f-3ff8-e457-b2f7-3158ce108649/mzaf_12389299033886433185.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1690466656',
+        title: 'Heeriye',
+        artist: 'Jasleen Royal & Arijit Singh',
+        album: 'Heeriye',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music116/v4/f0/8c/2a/f08c2aeb-3903-8738-d0a5-8c2e4547eed7/5054197711039.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/14/9b/ac/149bac62-12f1-2f55-a742-f38429b94c83/mzaf_17225240189976438593.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1745062759',
+        title: 'Winning Speech',
+        artist: 'Karan Aujla & MXRCI',
+        album: 'Winning Speech',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/48/7c/36/487c3668-f7a4-4b1a-e09e-c74dae124dd9/5063483578089_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/e3/ae/b6/e3aeb64f-cadd-5830-c39f-6af51cd91670/mzaf_6001527501800958065.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1649039974',
+        title: 'Maan Meri Jaan',
+        artist: 'King',
+        album: 'Champagne Talk',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music112/v4/90/9d/aa/909daa9a-3a47-9314-2855-39f5a157f1e3/5054197407734.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/49/c8/c0/49c8c0eb-6a72-d639-02d2-d55fa0034b89/mzaf_6556689839136809010.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
+        snippetDurationSeconds: 30,
+      ),
+      RiTuneTrack(
+        id: 'itunes_1669177015',
+        title: 'Tere Pyaar Mein',
+        artist: 'Pritam, Arijit Singh & Nikhita Gandhi',
+        album: 'Tu Jhoothi Main Makkaar',
+        artwork: 'https://is1-ssl.mzstatic.com/image/thumb/Music126/v4/f9/81/d9/f981d94a-6ddd-c80a-48a1-1e9f557d63a9/8903431925367_cover.jpg/600x600bb.jpg',
+        streamUrl: 'https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/18/4a/ca/184acaec-6769-c3ca-f65b-ecfe4e714fa5/mzaf_17308460714309480289.plus.aac.p.m4a',
+        snippetStartSeconds: 0,
         snippetDurationSeconds: 30,
       ),
     ];
@@ -403,18 +434,30 @@ class RiTuneService {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.audio,
         allowMultiple: false,
-        withData: kIsWeb,
+        withData: true,
       );
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         final name = file.name.replaceAll(RegExp(r'\.[a-zA-Z0-9]+$'), '');
         String streamUrl = file.path ?? '';
+        Uint8List? bytes = file.bytes;
 
-        if (kIsWeb && file.bytes != null) {
+        if (bytes == null && !kIsWeb && file.path != null && file.path!.isNotEmpty) {
+          try {
+            final f = io.File(file.path!);
+            if (await f.exists()) {
+              bytes = await f.readAsBytes();
+            }
+          } catch (readErr) {
+            debugPrint('Notice reading local audio file bytes: $readErr');
+          }
+        }
+
+        if (kIsWeb && bytes != null) {
           final ext = file.name.split('.').last.toLowerCase();
           final mime = ext == 'wav' ? 'audio/wav' : (ext == 'm4a' || ext == 'aac' ? 'audio/aac' : 'audio/mpeg');
-          streamUrl = Uri.dataFromBytes(file.bytes!, mimeType: mime).toString();
+          streamUrl = Uri.dataFromBytes(bytes, mimeType: mime).toString();
         }
 
         return RiTuneTrack(
@@ -426,7 +469,7 @@ class RiTuneService {
           streamUrl: streamUrl,
           isLocal: true,
           localPath: file.path,
-          audioBytes: file.bytes,
+          audioBytes: bytes,
           fileName: file.name,
         );
       }

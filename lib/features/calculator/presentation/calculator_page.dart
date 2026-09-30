@@ -20,21 +20,13 @@ class CalculatorPage extends ConsumerWidget {
     final targetRoute = NotificationService.pendingNotificationRoute;
     NotificationService.pendingNotificationRoute = null;
 
-    if (kIsWeb) {
-      final user = SupabaseService.clientOrNull?.auth.currentUser;
-      if (targetRoute != null && targetRoute.isNotEmpty) {
-        context.go(targetRoute);
-      } else if (user != null) {
-        context.go(AppRoutes.home);
-      } else {
-        context.go(AppRoutes.auth);
-      }
+    final user = SupabaseService.clientOrNull?.auth.currentUser;
+    if (targetRoute != null && targetRoute.isNotEmpty) {
+      context.go(targetRoute);
+    } else if (user != null) {
+      context.go(AppRoutes.home);
     } else {
-      if (targetRoute != null && targetRoute.isNotEmpty) {
-        context.go('${AppRoutes.webVault}?route=${Uri.encodeComponent(targetRoute)}');
-      } else {
-        context.go(AppRoutes.webVault);
-      }
+      context.go(AppRoutes.auth);
     }
   }
 
@@ -209,10 +201,11 @@ class CalculatorPage extends ConsumerWidget {
                                 );
                                 await Future.delayed(const Duration(milliseconds: 500));
                                 if (!context.mounted) return;
-                                if (kIsWeb) {
-                                  context.go(AppRoutes.auth);
+                                final user = SupabaseService.clientOrNull?.auth.currentUser;
+                                if (user != null) {
+                                  context.go(AppRoutes.home);
                                 } else {
-                                  context.go(AppRoutes.webVault);
+                                  context.go(AppRoutes.auth);
                                 }
                               }
                               if (outcome == CalculatorOutcome.unlocked) {

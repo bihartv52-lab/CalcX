@@ -1,6 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:calcx/core/services/supabase_service.dart';
 import 'package:calcx/features/chat/data/chat_repository.dart';
+import 'package:calcx/features/notes/data/notes_repository.dart';
 import 'package:calcx/features/notes/domain/user_note.dart';
+import 'package:calcx/features/notes/presentation/widgets/create_note_bottom_sheet.dart';
 import 'package:calcx/features/notes/services/ritune_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -422,6 +425,7 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
                                 isLocal: note.isLocalSong,
                                 startSeconds: note.songSnippetStart,
                                 durationSeconds: note.songSnippetDuration,
+                                isFullLength: note.isFullLengthSong,
                               );
                         },
                       ),
@@ -431,44 +435,89 @@ class _ViewNoteDialogState extends ConsumerState<ViewNoteDialog>
               const SizedBox(height: 16),
             ],
 
-            // Quick reply input field (Sends DM to this user)
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _replyController,
-                    decoration: InputDecoration(
-                      hintText: 'Reply to ${note.authorName}...',
-                      hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
-                      filled: true,
-                      fillColor: isDark ? const Color(0xFF1E2230) : const Color(0xFFF1F3F6),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide.none,
+            // Bottom Action: Quick reply (for friends) or Edit/Delete (for own note)
+            if (note.userId == SupabaseService.clientOrNull?.auth.currentUser?.id) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 18),
+                      label: const Text('Delete Note', style: TextStyle(color: Colors.redAccent, fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.redAccent, width: 1.2),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      onPressed: () async {
+                        ref.read(ritunePlaybackProvider.notifier).stop();
+                        Navigator.of(context).pop();
+                        await ref.read(notesRepositoryProvider).deleteNote();
+                        ref.invalidate(activeNotesProvider);
+                        ref.invalidate(myNoteProvider);
+                      },
                     ),
-                    onSubmitted: (_) => _sendReply(),
                   ),
-                ),
-                const SizedBox(width: 8),
-                if (_isSending)
-                  const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFD4AF37)),
-                  )
-                else
-                  IconButton(
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFD4AF37),
-                      foregroundColor: Colors.black87,
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.edit_note_rounded, size: 18),
+                      label: const Text('Edit Note', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4AF37),
+                        foregroundColor: Colors.black87,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
+                      ),
+                      onPressed: () {
+                        ref.read(ritunePlaybackProvider.notifier).stop();
+                        Navigator.of(context).pop();
+                        CreateNoteBottomSheet.show(context, existingNote: note);
+                      },
                     ),
-                    icon: const Icon(Icons.send_rounded, size: 18),
-                    onPressed: _sendReply,
                   ),
-              ],
-            ),
+                ],
+              ),
+            ] else ...[
+              // Quick reply input field (Sends DM to this user)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _replyController,
+                      decoration: InputDecoration(
+                        hintText: 'Reply to ${note.authorName}...',
+                        hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                        filled: true,
+                        fillColor: isDark ? const Color(0xFF1E2230) : const Color(0xFFF1F3F6),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(24),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      onSubmitted: (_) => _sendReply(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (_isSending)
+                    const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFD4AF37)),
+                    )
+                  else
+                    IconButton(
+                      style: IconButton.styleFrom(
+                        backgroundColor: const Color(0xFFD4AF37),
+                        foregroundColor: Colors.black87,
+                      ),
+                      icon: const Icon(Icons.send_rounded, size: 18),
+                      onPressed: _sendReply,
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

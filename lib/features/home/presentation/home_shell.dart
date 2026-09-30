@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:calcx/core/services/notification_service.dart';
 import 'package:calcx/core/services/supabase_service.dart';
 
 class HomeTabIndexNotifier extends Notifier<int> {
@@ -40,6 +41,7 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     super.initState();
     _checkAuth();
     _checkAppUpdate();
+    NotificationService.syncToken();
   }
 
   Future<void> _checkAuth() async {

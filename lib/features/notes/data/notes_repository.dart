@@ -119,6 +119,31 @@ class NotesRepository {
         }
       } catch (_) {}
 
+      // 1e. Get all chatted user IDs from 'messages' table so chatted contacts see notes
+      try {
+        final sentMsgs = await client
+            .from('messages')
+            .select('receiver_id')
+            .eq('sender_id', myId)
+            .limit(200);
+        for (final m in (sentMsgs as List<dynamic>)) {
+          final rid = m['receiver_id']?.toString();
+          if (rid != null && rid.isNotEmpty) friendIds.add(rid);
+        }
+      } catch (_) {}
+
+      try {
+        final recMsgs = await client
+            .from('messages')
+            .select('sender_id')
+            .eq('receiver_id', myId)
+            .limit(200);
+        for (final m in (recMsgs as List<dynamic>)) {
+          final sid = m['sender_id']?.toString();
+          if (sid != null && sid.isNotEmpty) friendIds.add(sid);
+        }
+      } catch (_) {}
+
       // 2. Get authors who added me to their close friends
       final closeFriendAuthorIds = <String>{};
       try {
@@ -173,7 +198,7 @@ class NotesRepository {
             resultList.add(UserNote.fromMap(map));
           }
         } else {
-          // 'mutual' / friends: visible if friends or connected
+          // 'mutual' / friends: visible if friends or connected in chat, or if list is empty
           if (friendIds.contains(authorId) || friendIds.isEmpty) {
             resultList.add(UserNote.fromMap(map));
           }
@@ -199,7 +224,7 @@ class NotesRepository {
     String? localFilePath,
     Uint8List? audioBytes,
     String? fileName,
-    String audience = 'mutual',
+    String audience = 'everyone',
     int songSnippetStart = 0,
     int songSnippetDuration = 30,
     String? mentionedUserId,
@@ -234,18 +259,29 @@ class NotesRepository {
         }
 
         if (bytes != null) {
-          final storagePath = 'notes/${myId}_${now.millisecondsSinceEpoch}.$ext';
           final mimeType = ext == 'wav'
               ? 'audio/wav'
               : (ext == 'm4a' || ext == 'aac' ? 'audio/aac' : 'audio/mpeg');
 
-          await client.storage.from('media').uploadBinary(
-                storagePath,
-                bytes,
-                fileOptions: FileOptions(contentType: mimeType, upsert: true),
-              );
-
-          finalSongUrl = client.storage.from('media').getPublicUrl(storagePath);
+          // Primary path formatted as {myId}/notes_{timestamp}.{ext} for RLS folder compliance
+          final storagePath = '$myId/notes_${now.millisecondsSinceEpoch}.$ext';
+          try {
+            await client.storage.from('media').uploadBinary(
+                  storagePath,
+                  bytes,
+                  fileOptions: FileOptions(contentType: mimeType, upsert: true),
+                );
+            finalSongUrl = client.storage.from('media').getPublicUrl(storagePath);
+          } catch (e1) {
+            debugPrint('Trying alternative storage path for note audio: $e1');
+            final altPath = 'notes/${myId}_${now.millisecondsSinceEpoch}.$ext';
+            await client.storage.from('media').uploadBinary(
+                  altPath,
+                  bytes,
+                  fileOptions: FileOptions(contentType: mimeType, upsert: true),
+                );
+            finalSongUrl = client.storage.from('media').getPublicUrl(altPath);
+          }
         }
       } catch (e) {
         debugPrint('Notice uploading local note audio: $e');

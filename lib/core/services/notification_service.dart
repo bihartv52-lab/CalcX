@@ -109,6 +109,13 @@ class NotificationService {
         await syncToken(token);
       }
 
+      // 9. Keep token in sync whenever auth state changes (login, token refresh)
+      SupabaseService.clientOrNull?.auth.onAuthStateChange.listen((data) {
+        if (data.session?.user.id != null) {
+          syncToken(null, data.session!.user.id);
+        }
+      });
+
     } catch (e) {
       debugPrint('Notification init skipped or failed: $e');
     }
