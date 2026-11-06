@@ -1518,7 +1518,7 @@ async function startApk(btn){
     finish('CalcX.apk saved — check your downloads', 'check');
   } catch (err) {
     /* CORS or streaming unsupported → silent iframe fallback, still zero navigation */
-    iframeDownload(GITHUB_APK_URL);
+    iframeDownload(APK_URL);
     finish('Download running in your browser\u2019s download manager', 'arrow-down');
   }
 }
