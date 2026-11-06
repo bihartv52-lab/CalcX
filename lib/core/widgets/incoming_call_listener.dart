@@ -390,6 +390,60 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
       final type = latest['type'] as String?;
       if (type == 'call') return; // Handled separately by incomingCallsProvider
 
+      if (type == 'new_login' || type == 'security_alert') {
+        if (_isOnCalculatorOrAuth) return;
+        final data = latest['data'] as Map<String, dynamic>? ?? {};
+        final deviceName = data['device_name'] as String? ?? 'Another device';
+        final deviceOs = data['device_os'] as String? ?? '';
+        final title = latest['title'] as String? ?? 'New Login Detected 🛡️';
+        final body = latest['body'] as String? ?? 'Your account was accessed from $deviceName ($deviceOs).';
+
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final rootKey = ref.read(rootNavigatorKeyProvider);
+          final rootContext = rootKey.currentContext;
+          if (rootContext != null) {
+            showDialog(
+              context: rootContext,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: const Color(0xFF1E1E1E),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.shield_outlined, color: Colors.blueAccent, size: 24),
+                    SizedBox(width: 10),
+                    Text('Security Alert', style: TextStyle(color: Colors.white, fontSize: 18)),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
+                    const SizedBox(height: 8),
+                    Text(body, style: const TextStyle(color: Colors.white70, fontSize: 13.5)),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Dismiss', style: TextStyle(color: Colors.white54)),
+                  ),
+                  FilledButton(
+                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFF3897F0)),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      rootContext.push(AppRoutes.devices);
+                    },
+                    child: const Text('Review Devices'),
+                  ),
+                ],
+              ),
+            );
+          }
+        });
+        return;
+      }
+
       if (type == 'room_invite') {
         if (_isOnCalculatorOrAuth) return; // Suppress invite popup on calculator/auth screens
 

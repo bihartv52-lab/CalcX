@@ -19,6 +19,8 @@ class Message {
     this.status = MessageStatus.delivered,
     this.reactions = const [],
     this.readUserIds = const [],
+    this.isRead = false,
+    this.readAt,
   });
 
   factory Message.fromMap(Map<String, dynamic> map) {
@@ -50,6 +52,10 @@ class Message {
               ?.map((e) => e['user_id'] as String)
               .toList() ??
           const [],
+      isRead: map['is_read'] as bool? ?? false,
+      readAt: map['read_at'] != null
+          ? DateTime.tryParse(map['read_at'] as String)
+          : null,
     );
   }
 
@@ -70,6 +76,8 @@ class Message {
   final MessageStatus status;
   final List<Map<String, dynamic>> reactions;
   final List<String> readUserIds;
+  final bool isRead;
+  final DateTime? readAt;
 
   Map<String, dynamic> toMap() {
     return {
@@ -86,6 +94,8 @@ class Message {
       'edited_at': editedAt?.toIso8601String(),
       'deleted': deleted,
       'created_at': createdAt.toIso8601String(),
+      'is_read': isRead,
+      'read_at': readAt?.toIso8601String(),
     };
   }
 
@@ -138,6 +148,8 @@ class Message {
     MessageStatus? status,
     List<Map<String, dynamic>>? reactions,
     List<String>? readUserIds,
+    bool? isRead,
+    DateTime? readAt,
   }) {
     return Message(
       id: id ?? this.id,
@@ -157,6 +169,8 @@ class Message {
       status: status ?? this.status,
       reactions: reactions ?? this.reactions,
       readUserIds: readUserIds ?? this.readUserIds,
+      isRead: isRead ?? this.isRead,
+      readAt: readAt ?? this.readAt,
     );
   }
 }

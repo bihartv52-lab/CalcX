@@ -38,6 +38,7 @@ dependencies:
   audioplayers: ^6.1.0
   flutter_inappwebview: ^6.1.5
   record: ^5.2.1
+  device_info_plus: ^12.4.0
 
 dev_dependencies:
   flutter_test:

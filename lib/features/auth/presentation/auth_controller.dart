@@ -1,5 +1,6 @@
 import 'package:calcx/features/auth/data/auth_repository.dart';
 import 'package:calcx/core/services/notification_service.dart';
+import 'package:calcx/core/services/device_security_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final authControllerProvider =
@@ -26,6 +27,8 @@ class AuthController extends AsyncNotifier<void> {
              );
          // Sync FCM token to DB on successful sign-in
          await NotificationService.syncToken();
+         // Register device into user_devices and create new login alert if new
+         await ref.read(deviceSecurityServiceProvider).registerOrHeartbeatDevice();
        },
      );
    }
@@ -45,6 +48,8 @@ class AuthController extends AsyncNotifier<void> {
              );
          // Sync FCM token to DB on successful sign-up
          await NotificationService.syncToken();
+         // Register device into user_devices
+         await ref.read(deviceSecurityServiceProvider).registerOrHeartbeatDevice();
        },
      );
    }

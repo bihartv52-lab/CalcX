@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:calcx/features/settings/presentation/widgets/about_developer_card.dart';
+import 'package:calcx/core/services/device_security_service.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -30,6 +31,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   final _newUsername = TextEditingController();
   final _currentPassword = TextEditingController();
   final _newPassword = TextEditingController();
+  final _confirmPassword = TextEditingController();
+  bool _logoutOtherDevicesOnPasswordChange = true;
   bool _autoAcceptFriends = true;
   bool _isLoadingAutoAccept = true;
   bool _isUpdatingAccount = false;
@@ -115,9 +118,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _changePassword() async {
     final currentPass = _currentPassword.text;
     final newPass = _newPassword.text;
+    final confirmPass = _confirmPassword.text;
+
     if (newPass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('New password cannot be empty')),
+      );
+      return;
+    }
+    if (newPass != confirmPass) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passwords do not match'), backgroundColor: Colors.red),
       );
       return;
     }
@@ -125,12 +136,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     setState(() => _isUpdatingAccount = true);
     try {
       await ref.read(authRepositoryProvider).updatePassword(currentPass, newPass);
+      if (_logoutOtherDevicesOnPasswordChange) {
+        await ref.read(deviceSecurityServiceProvider).logoutAllOtherDevices();
+      }
       _currentPassword.clear();
       _newPassword.clear();
+      _confirmPassword.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Password changed successfully'),
+          SnackBar(
+            content: Text(_logoutOtherDevicesOnPasswordChange
+                ? '✅ Password changed. All other devices have been logged out!'
+                : '✅ Password changed successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -459,35 +476,123 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ],
           ),
         ),
+        // INSTAGRAM-STYLE PASSWORD AND SECURITY SECTION
         GlassCard(
           margin: const EdgeInsets.only(bottom: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'Account Settings',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.security_rounded, color: Theme.of(context).colorScheme.primary, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Password and Security',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _newUsername,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  prefixIcon: Icon(Icons.person_outline_rounded),
-                ),
+              const SizedBox(height: 14),
+
+              // Where you're logged in (Login activity)
+              Consumer(
+                builder: (context, ref, _) {
+                  final devicesAsync = ref.watch(userDevicesStreamProvider);
+                  final deviceCount = devicesAsync.value?.length ?? 1;
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () => context.push(AppRoutes.devices),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).brightness == Brightness.light
+                            ? Colors.black.withOpacity(0.04)
+                            : Colors.white.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(context).brightness == Brightness.light
+                              ? Colors.black12
+                              : Colors.white12,
+                          width: 0.5,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.devices_other_rounded, color: Color(0xFF3897F0), size: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Where you\'re logged in',
+                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14.5),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '$deviceCount active device session${deviceCount > 1 ? "s" : ""} • Manage logins',
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right_rounded, color: Colors.grey),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
-              const SizedBox(height: 12),
-              FilledButton.icon(
-                onPressed: _isUpdatingAccount ? null : _updateUsername,
-                icon: const Icon(Icons.badge_outlined),
-                label: const Text('Update username'),
+              const SizedBox(height: 10),
+
+              // Single device active chat policy indicator
+              Consumer(
+                builder: (context, ref, _) {
+                  final myProfile = ref.watch(myProfileSecurityStreamProvider).value;
+                  final activeChatDeviceName = myProfile?['active_chat_device_name'] as String? ?? 'This Device';
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.amber.withOpacity(0.2), width: 0.5),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_person_rounded, size: 18, color: Colors.amberAccent),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Only 1 device can chat at a time (Active on: $activeChatDeviceName)',
+                            style: const TextStyle(fontSize: 11.5, color: Colors.amberAccent, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
-              const Divider(height: 24, thickness: 1),
+
+              const Divider(height: 28, thickness: 0.8),
+
+              // CHANGE PASSWORD SECTION
               const Text(
                 'Change Password',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
+              const Text(
+                'Must be at least 8 characters with letters, numbers, and an uppercase letter.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _currentPassword,
                 obscureText: true,
@@ -506,10 +611,60 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ),
               const SizedBox(height: 12),
+              TextField(
+                controller: _confirmPassword,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm new password',
+                  prefixIcon: Icon(Icons.lock_outline_rounded),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Instagram-style checkbox: "Log out of other devices"
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text(
+                  'Log out of all other devices',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  'Choose this if someone else might have used your account.',
+                  style: TextStyle(fontSize: 11.5, color: Colors.grey),
+                ),
+                value: _logoutOtherDevicesOnPasswordChange,
+                onChanged: (val) {
+                  setState(() => _logoutOtherDevicesOnPasswordChange = val ?? true);
+                },
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              const SizedBox(height: 8),
               FilledButton.icon(
                 onPressed: _isUpdatingAccount ? null : _changePassword,
                 icon: const Icon(Icons.vpn_key_outlined),
                 label: const Text('Change password'),
+              ),
+
+              const Divider(height: 28, thickness: 0.8),
+
+              // USERNAME UPDATE
+              const Text(
+                'Profile Username',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _newUsername,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  prefixIcon: Icon(Icons.person_outline_rounded),
+                ),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: _isUpdatingAccount ? null : _updateUsername,
+                icon: const Icon(Icons.badge_outlined),
+                label: const Text('Update username'),
               ),
             ],
           ),

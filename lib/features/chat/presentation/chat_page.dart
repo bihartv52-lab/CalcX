@@ -24,6 +24,7 @@ import 'package:calcx/features/chat/presentation/widgets/interactive_message_tex
 import 'package:calcx/features/chat/presentation/widgets/message_hover_copy_button.dart';
 import 'package:calcx/features/chat/presentation/widgets/chat_emoji_picker.dart';
 import 'package:calcx/core/services/chat_draft_service.dart';
+import 'package:calcx/core/services/device_security_service.dart';
 import 'package:calcx/features/chat/presentation/widgets/delete_chat_dialog.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -286,14 +287,14 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
       if (myId != null) {
         final convChannelName = ChatRepository.getConversationChannelName(myId, widget.otherUserId);
         _readsSubscription = client
-            .channel('reads_$convChannelName')
+            .channel(convChannelName)
             .onBroadcast(
               event: 'messages_read',
               callback: (payload) {
                 final readerId = payload['readerId'] as String?;
                 final readAtStr = payload['readAt'] as String?;
-                if (readerId == widget.otherUserId && readAtStr != null) {
-                  final readAt = DateTime.tryParse(readAtStr);
+                if (readerId == widget.otherUserId) {
+                  final readAt = readAtStr != null ? DateTime.tryParse(readAtStr) : DateTime.now();
                   if (readAt != null && mounted) {
                     setState(() {
                       _otherUserLastReadAt = readAt;
@@ -301,6 +302,17 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
                   }
                 }
               },
+            )
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'messages',
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'is_read',
+                value: 'true',
+              ),
+              callback: (_) => _fetchLastReadCursor(),
             )
             .onPostgresChanges(
               event: PostgresChangeEvent.all,
@@ -450,6 +462,31 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     final client = SupabaseService.clientOrNull;
     if (client == null) return;
     try {
+      final myId = client.auth.currentUser?.id;
+      if (myId != null) {
+        // Check latest read_at on messages sent by me to the other user
+        final msgRes = await client
+            .from('messages')
+            .select('read_at, created_at')
+            .eq('sender_id', myId)
+            .eq('receiver_id', widget.otherUserId)
+            .eq('is_read', true)
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        if (msgRes != null) {
+          final readAtStr = msgRes['read_at'] as String? ?? msgRes['created_at'] as String?;
+          if (readAtStr != null) {
+            final readAt = DateTime.tryParse(readAtStr);
+            if (readAt != null && mounted) {
+              setState(() => _otherUserLastReadAt = readAt);
+              return;
+            }
+          }
+        }
+      }
+
       final response = await client
           .from('message_reads')
           .select('read_at')
@@ -760,6 +797,43 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
     if (content.isEmpty) {
       _messageFocusNode.requestFocus();
       return;
+    }
+
+    final isChatAllowed = await ref.read(deviceSecurityServiceProvider).isThisDeviceActiveChat();
+    if (!isChatAllowed && mounted) {
+      final shouldSwitch = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF1E1E1E),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_person_rounded, color: Colors.amberAccent),
+              SizedBox(width: 8),
+              Text('Single Device Chat Lock', style: TextStyle(color: Colors.white, fontSize: 16)),
+            ],
+          ),
+          content: const Text(
+            'Chat is active on another device. Only one device can chat at a time for security.\n\nSwitch active chat to this device?',
+            style: TextStyle(color: Colors.white70, fontSize: 13.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Switch to This Device'),
+            ),
+          ],
+        ),
+      );
+      if (shouldSwitch == true && mounted) {
+        await ref.read(deviceSecurityServiceProvider).switchChatToThisDevice();
+      } else {
+        return;
+      }
     }
 
     _messageController.clear();
@@ -2053,6 +2127,60 @@ class _ChatPageState extends ConsumerState<ChatPage> with WidgetsBindingObserver
           
           Column(
             children: [
+              // Single Device Chat Lock Alert Banner
+              Consumer(
+                builder: (context, ref, _) {
+                  final myProfile = ref.watch(myProfileSecurityStreamProvider).value;
+                  final activeChatDeviceId = myProfile?['active_chat_device_id'] as String?;
+                  final activeChatDeviceName = myProfile?['active_chat_device_name'] as String? ?? 'Another Device';
+                  final myDeviceIdAsync = ref.watch(currentDeviceIdProvider);
+                  final myDeviceId = myDeviceIdAsync.value ?? '';
+
+                  final isChatActiveOnThisDevice = activeChatDeviceId == null ||
+                      activeChatDeviceId.isEmpty ||
+                      activeChatDeviceId == myDeviceId;
+
+                  if (isChatActiveOnThisDevice) return const SizedBox.shrink();
+
+                  return Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    color: Colors.amber.shade900.withOpacity(0.3),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.lock_person_rounded, color: Colors.amberAccent, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Chat active on "$activeChatDeviceName". Only 1 device can chat at a time.',
+                            style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        FilledButton.tonal(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.amberAccent.withOpacity(0.25),
+                            foregroundColor: Colors.amberAccent,
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: () async {
+                            await ref.read(deviceSecurityServiceProvider).switchChatToThisDevice();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Chat switched to this device!'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Switch Here', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
               // Ongoing Call Banner if call is active with this user and call page is minimized
               Builder(
                 builder: (context) {
@@ -3342,7 +3470,8 @@ class _MessageBubble extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final chatPartnerId = otherUserId ?? message.roomId ?? (isMe ? (message.receiverId ?? '') : message.senderId);
-    final isRead = (otherUserLastReadAt != null && !message.createdAt.isAfter(otherUserLastReadAt!)) ||
+    final isRead = message.isRead ||
+        (otherUserLastReadAt != null && !message.createdAt.isAfter(otherUserLastReadAt!)) ||
         (chatPartnerId.isNotEmpty && message.readUserIds.contains(chatPartnerId)) ||
         (message.roomId == null && message.readUserIds.any((id) => id != message.senderId));
     final isLight = Theme.of(context).brightness == Brightness.light;

@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:calcx/core/services/notification_service.dart';
 import 'package:calcx/core/services/supabase_service.dart';
+import 'package:calcx/core/services/device_security_service.dart';
 
 class HomeTabIndexNotifier extends Notifier<int> {
   @override
@@ -44,10 +45,49 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     NotificationService.syncToken();
   }
 
+  @override
+  void dispose() {
+    ref.read(deviceSecurityServiceProvider).stopListeningToRevocation();
+    super.dispose();
+  }
+
   Future<void> _checkAuth() async {
     final signedIn = await ref.read(authRepositoryProvider).isSignedIn();
     if (!signedIn && mounted) {
       context.go(AppRoutes.auth);
+      return;
+    }
+
+    if (signedIn) {
+      final isValid = await ref.read(deviceSecurityServiceProvider).checkSessionValidity();
+      if (!isValid && mounted) {
+        await ref.read(authRepositoryProvider).signOut();
+        context.go(AppRoutes.auth);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🔒 Security update applied. Please log in again to register this device.'),
+            backgroundColor: Colors.blueAccent,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        return;
+      }
+
+      // Heartbeat device session and listen for remote session revocations
+      await ref.read(deviceSecurityServiceProvider).registerOrHeartbeatDevice();
+      ref.read(deviceSecurityServiceProvider).listenToSessionRevocation(() {
+        if (mounted) {
+          ref.read(authRepositoryProvider).signOut();
+          context.go(AppRoutes.auth);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ You were logged out of this device from another session.'),
+              backgroundColor: Colors.redAccent,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      });
     }
   }
 

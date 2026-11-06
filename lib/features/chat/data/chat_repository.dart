@@ -404,15 +404,22 @@ class ChatRepository {
           if (readerId != null && readerId == otherUserId) {
             final cache = _activeDirectCaches[otherUserId];
             if (cache != null && cache.isNotEmpty) {
-              final readAt = readAtStr != null ? DateTime.tryParse(readAtStr) : null;
+              final readAt = readAtStr != null ? DateTime.tryParse(readAtStr) : DateTime.now();
               var changed = false;
               final updated = cache.map((msg) {
                 if (msg.senderId == myId) {
                   final isTarget = msgIds.contains(msg.id) ||
                       (readAt != null && !msg.createdAt.isAfter(readAt));
-                  if (isTarget && !msg.readUserIds.contains(readerId)) {
+                  if (isTarget && (!msg.isRead || !msg.readUserIds.contains(readerId))) {
                     changed = true;
-                    return msg.copyWith(readUserIds: [...msg.readUserIds, readerId]);
+                    final reads = msg.readUserIds.contains(readerId)
+                        ? msg.readUserIds
+                        : [...msg.readUserIds, readerId];
+                    return msg.copyWith(
+                      isRead: true,
+                      readAt: readAt,
+                      readUserIds: reads,
+                    );
                   }
                 }
                 return msg;
@@ -420,6 +427,7 @@ class ChatRepository {
               if (changed) {
                 _activeDirectCaches[otherUserId] = updated;
                 controller.add(updated);
+                unawaited(OfflineChatCache.saveDirectMessages(myId, otherUserId, updated));
               }
             }
           }
@@ -950,15 +958,38 @@ class ChatRepository {
       if (unreadMsgIds.isEmpty) return;
 
       final nowIso = DateTime.now().toIso8601String();
-      final inserts = unreadMsgIds.map((msgId) => {
-        'message_id': msgId,
-        'user_id': myId,
-        'read_at': nowIso,
-      }).toList();
 
-      await supabase.from('message_reads').upsert(inserts);
+      // 1. Direct is_read column update for instant Postgres replication & 0-overhead
+      try {
+        await supabase
+            .from('messages')
+            .update({
+              'is_read': true,
+              'read_at': nowIso,
+            })
+            .eq('sender_id', partnerId)
+            .eq('receiver_id', myId)
+            .eq('is_read', false);
+      } catch (colErr) {
+        debugPrint('Direct is_read column update note: $colErr');
+      }
 
-      // Mark message notifications as read so pending notification count resets
+      // 2. Multi-user message_reads table upsert
+      if (unreadMsgIds.isNotEmpty) {
+        final inserts = unreadMsgIds.map((msgId) => {
+          'message_id': msgId,
+          'user_id': myId,
+          'read_at': nowIso,
+        }).toList();
+
+        try {
+          await supabase.from('message_reads').upsert(inserts);
+        } catch (mrErr) {
+          debugPrint('message_reads upsert note: $mrErr');
+        }
+      }
+
+      // 3. Mark message notifications as read so pending notification count resets
       try {
         await supabase
             .from('notifications')
@@ -967,10 +998,15 @@ class ChatRepository {
             .eq('type', 'message');
       } catch (_) {}
 
-      // Broadcast read receipt event across conversation channel (<10ms UI update)
+      // 4. Broadcast read receipt event across conversation channel (<10ms UI update)
       try {
         final channelName = getConversationChannelName(myId, partnerId);
-        final ch = _activeDirectChannels[partnerId] ?? supabase.channel(channelName);
+        var ch = _activeDirectChannels[partnerId];
+        if (ch == null) {
+          ch = supabase.channel(channelName);
+          _activeDirectChannels[partnerId] = ch;
+          ch.subscribe();
+        }
         await ch.sendBroadcastMessage(
           event: 'messages_read',
           payload: {
@@ -1055,7 +1091,7 @@ class ChatRepository {
         // Fetch all unread messages for all partners in a single query
         final unreadResponse = await supabase
             .from('messages')
-            .select('id, sender_id, message_reads(id, user_id)')
+            .select('id, sender_id, is_read, message_reads(id, user_id)')
             .inFilter('sender_id', partnerIds)
             .eq('receiver_id', myId)
             .filter('room_id', 'is', null);
@@ -1068,6 +1104,7 @@ class ChatRepository {
           final partnerUnreadCount = unreadList
               .where((m) => m['sender_id'] == partnerId)
               .where((m) {
+                if (m['is_read'] == true) return false;
                 final reads = m['message_reads'] as List? ?? [];
                 return !reads.any((r) => r['user_id'] == myId);
               })

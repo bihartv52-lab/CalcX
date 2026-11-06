@@ -11,6 +11,7 @@ import 'package:calcx/features/friends/presentation/user_search_page.dart';
 import 'package:calcx/features/notes/data/notes_repository.dart';
 import 'package:calcx/features/notes/presentation/widgets/notes_horizontal_bar.dart';
 import 'package:calcx/core/widgets/quick_panic_calculator_button.dart';
+import 'package:calcx/core/services/device_security_service.dart';
 
 final recentChatsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final repository = ref.watch(chatRepositoryProvider);
@@ -200,6 +201,77 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
               const SizedBox(height: 12),
             ],
             
+            // Single Device Active Chat Lock Banner
+            Consumer(
+              builder: (context, ref, _) {
+                final myProfile = ref.watch(myProfileSecurityStreamProvider).value;
+                final activeChatDeviceId = myProfile?['active_chat_device_id'] as String?;
+                final activeChatDeviceName = myProfile?['active_chat_device_name'] as String? ?? 'Another Device';
+                final myDeviceIdAsync = ref.watch(currentDeviceIdProvider);
+                final myDeviceId = myDeviceIdAsync.value ?? '';
+
+                final isChatActiveOnThisDevice = activeChatDeviceId == null ||
+                    activeChatDeviceId.isEmpty ||
+                    activeChatDeviceId == myDeviceId;
+
+                if (isChatActiveOnThisDevice) return const SizedBox.shrink();
+
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade900.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.amber.withOpacity(0.3), width: 0.8),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.lock_person_rounded, color: Colors.amberAccent, size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Chatting active on another device',
+                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Active on "$activeChatDeviceName". Only 1 device can chat at a time.',
+                              style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.tonal(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.amberAccent.withOpacity(0.25),
+                          foregroundColor: Colors.amberAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        onPressed: () async {
+                          await ref.read(deviceSecurityServiceProvider).switchChatToThisDevice();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Chat switched to this device!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Switch Here', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
             const NotesHorizontalBar(),
             const SizedBox(height: 14),
             
@@ -336,6 +408,11 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                         previewText = '② View Twice Video';
                       }
 
+                      final myId = SupabaseService.clientOrNull?.auth.currentUser?.id;
+                      final senderId = lastMessage['sender_id'] as String?;
+                      final isSentByMe = myId != null && senderId == myId;
+                      final isSentRead = lastMessage['is_read'] == true;
+
                       return _ChatPreview(
                         name: displayName,
                         username: username,
@@ -345,6 +422,8 @@ class _ChatListPageState extends ConsumerState<ChatListPage> {
                         time: _formatTime(createdAt),
                         unread: unreadCount,
                         online: isPartnerOnline,
+                        isSentByMe: isSentByMe,
+                        isSentRead: isSentRead,
                         onTap: () => context.push('/chat/$partnerId'),
                       );
                     },
@@ -410,6 +489,8 @@ class _ChatPreview extends ConsumerWidget {
     required this.time,
     this.unread = 0,
     this.online = false,
+    this.isSentByMe = false,
+    this.isSentRead = false,
     this.onTap,
   });
 
@@ -421,6 +502,8 @@ class _ChatPreview extends ConsumerWidget {
   final String time;
   final int unread;
   final bool online;
+  final bool isSentByMe;
+  final bool isSentRead;
   final VoidCallback? onTap;
 
   @override
@@ -498,6 +581,14 @@ class _ChatPreview extends ConsumerWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
+                      if (isSentByMe && !isTyping) ...[
+                        Icon(
+                          Icons.done_all_rounded,
+                          size: 14,
+                          color: isSentRead ? primaryAccent : (isLight ? Colors.black38 : Colors.grey),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
                       Expanded(
                         child: Text(
                           isTyping ? 'typing...' : message,
